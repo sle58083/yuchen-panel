@@ -2,6 +2,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,7 +11,18 @@ import (
 	"time"
 
 	"yuchen-panel/backend/internal/model"
+	"yuchen-panel/backend/internal/xray"
 )
+
+// isShareableNodeProtocol 判断入站协议是否可以生成客户分享/订阅内容。
+// SOCKS5 与 dokodemo-door 属于内部链路入站，不生成客户订阅。
+func isShareableNodeProtocol(p string) bool {
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "vless", "vmess", "trojan", "shadowsocks":
+		return true
+	}
+	return false
+}
 
 func (r *Router) subscription(w http.ResponseWriter, req *http.Request) {
 	path := strings.Trim(strings.TrimPrefix(req.URL.Path, "/sub/"), "/")
@@ -67,7 +79,7 @@ func (r *Router) subscription(w http.ResponseWriter, req *http.Request) {
 		if len(allowed) > 0 && !allowed[n.ID] {
 			continue
 		}
-		if strings.ToLower(n.Protocol) != "vless" {
+		if !isShareableNodeProtocol(n.Protocol) {
 			continue
 		}
 		nodes = append(nodes, n)
@@ -90,7 +102,7 @@ func (r *Router) subscription(w http.ResponseWriter, req *http.Request) {
 	}
 	lines := []string{}
 	for _, n := range nodes {
-		lines = append(lines, buildVlessShareLink(n, client))
+		lines = append(lines, buildNodeShareLink(n, client))
 	}
 	for _, rr := range relays {
 		lines = append(lines, buildRelayShareLink(rr, client))
@@ -156,10 +168,10 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 			break
 		}
 	}
-	if foundNode && node.Enabled && strings.ToLower(node.Protocol) == "vless" {
+	if foundNode && node.Enabled && isShareableNodeProtocol(node.Protocol) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte(buildVlessShareLink(node, client)))
+		_, _ = w.Write([]byte(buildNodeShareLink(node, client)))
 		return
 	}
 	if rr, ok := r.store.Data.RelayRoutes[nodeID]; ok && rr.Enabled && rr.RouteMode == "socks5_route" {
@@ -253,7 +265,7 @@ func buildClashMetaSubscription(nodes []model.Node, relays []model.RelayRoute, c
 	for _, n := range nodes {
 		name := nodeShareName(n)
 		proxyNames = append(proxyNames, name)
-		proxyLines = append(proxyLines, buildClashProxyLines(name, nodeHost(n), n.Port, client.UUID, n.Security, valueOr(n.Transport, "tcp"), n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.RealitySpiderX, n.Path)...)
+		proxyLines = append(proxyLines, buildClashProxyLinesForNode(n, client)...)
 	}
 	for _, rr := range relays {
 		name := relayShareName(rr)
@@ -303,11 +315,23 @@ func buildClashMetaSubscription(nodes []model.Node, relays []model.RelayRoute, c
 	return strings.Join(lines, "\n")
 }
 
-func buildVlessShareLink(n model.Node, client model.Client) string {
-	host := n.Host
-	if host == "" {
-		host = "127.0.0.1"
+// buildNodeShareLink 按入站协议生成对应的分享链接：
+// vless://、vmess://（base64 JSON）、trojan://、ss://（SIP002）。
+func buildNodeShareLink(n model.Node, client model.Client) string {
+	switch strings.ToLower(strings.TrimSpace(n.Protocol)) {
+	case "vmess":
+		return buildVmessShareLink(n, client)
+	case "trojan":
+		return buildTrojanShareLink(n, client)
+	case "shadowsocks":
+		return buildSSShareLink(n)
+	default:
+		return buildVlessShareLink(n, client)
 	}
+}
+
+func buildVlessShareLink(n model.Node, client model.Client) string {
+	host := nodeHost(n)
 	q := url.Values{}
 	q.Set("encryption", "none")
 	q.Set("security", valueOr(n.Security, "none"))
@@ -363,4 +387,166 @@ func valueOr(v, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// buildVmessShareLink 生成 vmess:// 链接（v2rayN base64 JSON 格式）。
+func buildVmessShareLink(n model.Node, client model.Client) string {
+	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
+	security := strings.ToLower(valueOr(n.Security, "none"))
+	obj := map[string]any{
+		"v":    "2",
+		"ps":   nodeShareName(n),
+		"add":  nodeHost(n),
+		"port": fmt.Sprintf("%d", n.Port),
+		"id":   client.UUID,
+		"aid":  "0",
+		"scy":  "auto",
+		"net":  transport,
+		"type": "none",
+		"host": "",
+		"path": "",
+		"tls":  "",
+	}
+	if transport == "ws" {
+		obj["path"] = n.Path
+	}
+	if transport == "grpc" {
+		obj["path"] = strings.Trim(n.Path, "/")
+	}
+	if security == "tls" || security == "reality" {
+		obj["tls"] = "tls"
+		obj["sni"] = n.SNI
+		obj["fp"] = valueOr(n.Fingerprint, "chrome")
+	}
+	if security == "reality" {
+		obj["pbk"] = n.RealityPublicKey
+		obj["sid"] = n.RealityShortID
+		obj["spx"] = valueOr(n.RealitySpiderX, "/")
+	}
+	raw, _ := json.Marshal(obj)
+	return "vmess://" + base64.StdEncoding.EncodeToString(raw)
+}
+
+// buildTrojanShareLink 生成 trojan:// 分享链接，密码与 Xray 服务端 clients 一致。
+func buildTrojanShareLink(n model.Node, client model.Client) string {
+	q := url.Values{}
+	security := strings.ToLower(valueOr(n.Security, "none"))
+	if security == "reality" {
+		q.Set("security", "reality")
+		q.Set("fp", valueOr(n.Fingerprint, "chrome"))
+		if n.RealityPublicKey != "" {
+			q.Set("pbk", n.RealityPublicKey)
+		}
+		if n.RealityShortID != "" {
+			q.Set("sid", n.RealityShortID)
+		}
+		q.Set("spx", valueOr(n.RealitySpiderX, "/"))
+	} else {
+		q.Set("security", "tls")
+	}
+	if n.SNI != "" {
+		q.Set("sni", n.SNI)
+	}
+	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
+	q.Set("type", transport)
+	if transport == "ws" && n.Path != "" {
+		q.Set("path", n.Path)
+	}
+	if transport == "grpc" && n.Path != "" {
+		q.Set("serviceName", strings.Trim(n.Path, "/"))
+	}
+	name := url.QueryEscape(nodeShareName(n))
+	return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", xray.TrojanClientPassword(client), nodeHost(n), n.Port, q.Encode(), name)
+}
+
+// buildSSShareLink 生成 SIP002 ss:// 分享链接（base64url(method:password)@host:port）。
+func buildSSShareLink(n model.Node) string {
+	method, password := xray.SSCredentials(n)
+	userInfo := base64.RawURLEncoding.EncodeToString([]byte(method + ":" + password))
+	name := url.QueryEscape(nodeShareName(n))
+	return fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, nodeHost(n), n.Port, name)
+}
+
+// buildClashProxyLinesForNode 按协议生成 Clash Meta / Mihomo proxies 段。
+func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
+	name := nodeShareName(n)
+	host := nodeHost(n)
+	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
+	security := strings.ToLower(valueOr(n.Security, "none"))
+	switch strings.ToLower(strings.TrimSpace(n.Protocol)) {
+	case "vmess":
+		lines := []string{
+			fmt.Sprintf("  - name: %s", yamlQuote(name)),
+			"    type: vmess",
+			fmt.Sprintf("    server: %s", yamlQuote(host)),
+			fmt.Sprintf("    port: %d", n.Port),
+			fmt.Sprintf("    uuid: %s", yamlQuote(client.UUID)),
+			"    alterId: 0",
+			"    cipher: auto",
+			"    udp: true",
+		}
+		appendClashTransportAndTLS(&lines, security, transport, n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.Path)
+		return lines
+	case "trojan":
+		// Trojan 协议本身要求 TLS，mihomo 也默认按 TLS 处理；
+		// 非 reality 时统一按 tls 输出，reality 时输出 reality-opts。
+		trojanSecurity := security
+		if trojanSecurity != "reality" {
+			trojanSecurity = "tls"
+		}
+		lines := []string{
+			fmt.Sprintf("  - name: %s", yamlQuote(name)),
+			"    type: trojan",
+			fmt.Sprintf("    server: %s", yamlQuote(host)),
+			fmt.Sprintf("    port: %d", n.Port),
+			fmt.Sprintf("    password: %s", yamlQuote(xray.TrojanClientPassword(client))),
+			fmt.Sprintf("    network: %s", yamlQuote(transport)),
+			"    udp: true",
+		}
+		appendClashTransportAndTLS(&lines, trojanSecurity, transport, n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.Path)
+		return lines
+	case "shadowsocks":
+		method, password := xray.SSCredentials(n)
+		return []string{
+			fmt.Sprintf("  - name: %s", yamlQuote(name)),
+			"    type: ss",
+			fmt.Sprintf("    server: %s", yamlQuote(host)),
+			fmt.Sprintf("    port: %d", n.Port),
+			fmt.Sprintf("    cipher: %s", yamlQuote(method)),
+			fmt.Sprintf("    password: %s", yamlQuote(password)),
+			"    udp: true",
+		}
+	default:
+		return buildClashProxyLines(name, host, n.Port, client.UUID, n.Security, valueOr(n.Transport, "tcp"), n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.RealitySpiderX, n.Path)
+	}
+}
+
+// appendClashTransportAndTLS 追加 Clash 通用的 TLS/Reality 与 ws/grpc 传输配置。
+func appendClashTransportAndTLS(lines *[]string, security, transport, sni, fingerprint, publicKey, shortID, path string) {
+	security = strings.ToLower(valueOr(security, "none"))
+	if security == "reality" || security == "tls" {
+		*lines = append(*lines, "    tls: true")
+		if strings.TrimSpace(sni) != "" {
+			*lines = append(*lines, fmt.Sprintf("    servername: %s", yamlQuote(sni)))
+		}
+		*lines = append(*lines, fmt.Sprintf("    client-fingerprint: %s", yamlQuote(valueOr(fingerprint, "chrome"))))
+		*lines = append(*lines, "    skip-cert-verify: false")
+	} else {
+		*lines = append(*lines, "    tls: false")
+	}
+	if security == "reality" {
+		*lines = append(*lines, "    reality-opts:")
+		*lines = append(*lines, fmt.Sprintf("      public-key: %s", yamlQuote(publicKey)))
+		if strings.TrimSpace(shortID) != "" {
+			*lines = append(*lines, fmt.Sprintf("      short-id: %s", yamlQuote(shortID)))
+		}
+	}
+	if transport == "ws" && strings.TrimSpace(path) != "" {
+		*lines = append(*lines, "    ws-opts:")
+		*lines = append(*lines, fmt.Sprintf("      path: %s", yamlQuote(path)))
+	}
+	if transport == "grpc" && strings.TrimSpace(path) != "" {
+		*lines = append(*lines, "    grpc-opts:")
+		*lines = append(*lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(strings.Trim(path, "/"))))
+	}
 }

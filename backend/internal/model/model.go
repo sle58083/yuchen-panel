@@ -57,6 +57,9 @@ type Node struct {
 	SocksUsername     string    `json:"socks_username"`
 	SocksPassword     string    `json:"socks_password"`
 	SocksUDP          bool      `json:"socks_udp"`
+	// SSMethod/SSPassword 用于 Shadowsocks 入站凭据（Xray SS 入站为单用户：method+password 在 settings 上）。
+	SSMethod         string    `json:"ss_method"`
+	SSPassword       string    `json:"ss_password"`
 	Remark            string    `json:"remark"`
 	Enabled           bool      `json:"enabled"`
 	CreatedAt         time.Time `json:"created_at"`
@@ -88,6 +91,8 @@ type Client struct {
 	Username       string    `json:"username"`
 	Email          string    `json:"email"`
 	UUID           string    `json:"uuid"`
+	// Password 用于 Trojan 等基于密码的协议。VMess 复用 UUID，Shadowsocks 凭据保存在入站上。
+	Password       string    `json:"password"`
 	TrafficLimitGB int64     `json:"traffic_limit_gb"`
 	TrafficUsedGB  int64     `json:"traffic_used_gb"`
 	ExpireAt       time.Time `json:"expire_at"`

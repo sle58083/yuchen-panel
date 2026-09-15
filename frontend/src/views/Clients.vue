@@ -147,7 +147,7 @@ function closeFixedClientModal() {
 async function createDirectClient() {
   error.value=''; message.value=''
   if (!String(directForm.value.username || '').trim()) { error.value='请填写客户名称。'; return }
-  if (!directForm.value.node_id) { error.value='请选择直连入站。请先到入站管理创建 VLESS Reality 入站。'; return }
+  if (!directForm.value.node_id) { error.value='请选择直连入站。请先到入站管理创建入站（VLESS/VMess/Trojan/Shadowsocks 均可）。'; return }
   try {
     const body={
       username: directForm.value.username,
@@ -315,7 +315,7 @@ function mainQrText() {
   return shareText.value
 }
 function qrModeHint() {
-  if (shareTab.value === 'v2rayn') return 'V2rayN 二维码内容就是 vless:// 单节点链接，下载图片后可直接从图片导入。'
+  if (shareTab.value === 'v2rayn') return 'V2rayN 二维码内容是单节点分享链接（vless/vmess/trojan/ss），下载图片后可直接从图片导入。'
   if (shareTab.value === 'subscription') return '订阅二维码用于批量导入和后续统一更新；HTTP 订阅可能被 v2rayN 拦截。'
   return '当前二维码为单节点配置二维码。'
 }
@@ -323,7 +323,7 @@ onMounted(load)
 </script>
 <template>
   <div v-if="copyToast" class="copy-toast">{{ copyToast }}</div>
-  <div class="page-head"><div><h1 class="page-title">客户管理</h1><p class="page-desc">V0.7.7.1 客户管理稳定版：固定出口客户通过弹窗创建，客户入口与出口关系更清晰。</p></div></div>
+  <div class="page-head"><div><h1 class="page-title">客户管理</h1><p class="page-desc">V1.0.1 多协议客户管理：VLESS/VMess/Trojan/Shadowsocks 入站均可绑定客户并导出订阅。</p></div></div>
 
   <div class="client-summary-grid">
     <div class="client-summary-card"><span>客户总数</span><strong>{{ clientStats.total }}</strong></div>
@@ -373,7 +373,7 @@ onMounted(load)
         </div>
         <div class="relay-step"><strong>2. 选择直连入站</strong><span>客户连接本机入站，出口 IP 为当前服务器 IP。</span></div>
         <div class="form compact-form">
-          <label><span>直连入站</span><select v-model="directForm.node_id"><option value="">请选择直连入站</option><option v-for="n in clientBindableNodes" :key="n.id" :value="n.id">{{ n.name }} / {{ n.host }}:{{ n.port }}</option></select><em class="field-tip">如果没有可选入站，请先到“入站管理”创建 VLESS Reality 入站。</em></label>
+          <label><span>直连入站</span><select v-model="directForm.node_id"><option value="">请选择直连入站</option><option v-for="n in clientBindableNodes" :key="n.id" :value="n.id">{{ n.name }} / {{ n.protocol?.toUpperCase() }} / {{ n.host }}:{{ n.port }}</option></select><em class="field-tip">如果没有可选入站，请先到“入站管理”创建入站（VLESS/VMess/Trojan/Shadowsocks 均可）。</em></label>
         </div>
         <div class="fixed-exit-preview" v-if="directForm.node_id">
           <div class="notice ok">客户连接入口：{{ nodes.find((n:any)=>n.id===directForm.node_id)?.host }}:{{ nodes.find((n:any)=>n.id===directForm.node_id)?.port }}</div>
@@ -426,7 +426,7 @@ onMounted(load)
     <label class="field"><span>流量 GB</span><input v-model.number="form.traffic_limit_gb" placeholder="流量 GB" /></label>
     <label class="field"><span>到期时间</span><input v-model="form.expire_at" type="datetime-local" /></label>
     <label class="field"><span>状态</span><select v-model="form.enabled"><option :value="true">启用</option><option :value="false">停用</option></select></label>
-    <label class="field wide"><span>关联直连入站</span><select v-model="form.node_ids" multiple class="wide"><option v-for="n in clientBindableNodes" :value="n.id" :key="n.id">{{ n.name }}｜{{ n.host }}:{{ n.port }}</option></select></label>
+    <label class="field wide"><span>关联直连入站</span><select v-model="form.node_ids" multiple class="wide"><option v-for="n in clientBindableNodes" :value="n.id" :key="n.id">{{ n.name }}｜{{ n.protocol?.toUpperCase() }}｜{{ n.host }}:{{ n.port }}</option></select></label>
     <label class="field wide"><span>绑定固定出口中转线路（只能选一条）</span><select :value="form.relay_route_ids?.[0] || ''" @change="setAdvancedRelayRoute" class="wide"><option value="">不绑定固定出口</option><option v-for="r in clientBindableRelays" :value="r.id" :key="r.id">{{ r.name }}｜入口 {{ r.relay_host }}:{{ r.relay_port }} → 出口 {{ r.manual_socks_host || r.landing_node_id }}</option></select></label>
     <div class="actions"><button class="btn" @click="saveClient">{{ editingId ? '保存客户' : '新增客户' }}</button><button v-if="editingId" class="btn secondary" @click="resetForm">取消编辑</button></div>
   </div>
@@ -470,6 +470,7 @@ onMounted(load)
         <div><span>状态</span><strong><span class="badge" :class="detailClient.enabled?'online':''">{{ statusText(detailClient) }}</span></strong></div>
         <div><span>邮箱</span><strong>{{ detailClient.email || '未填写' }}</strong></div>
         <div><span>UUID</span><strong class="code">{{ detailClient.uuid }}</strong></div>
+        <div><span>Trojan 密码</span><strong class="code">{{ detailClient.password || '—' }}</strong></div>
         <div><span>订阅 Token</span><strong class="code">{{ detailClient.subscribe_token }}</strong></div>
         <div><span>流量</span><strong>{{ trafficText(detailClient) }}</strong></div>
         <div><span>到期时间</span><strong>{{ fmtTime(detailClient.expire_at) }}</strong></div>
@@ -496,7 +497,7 @@ onMounted(load)
           <strong>{{ opt.label }}</strong><span>{{ opt.tip }}</span>
         </button>
       </div>
-      <div class="notice warn modal-tip">{{ shareTip }}<br>默认二维码为 vless:// 单节点链接；订阅二维码只用于批量更新，HTTP 订阅可能被 v2rayN 拦截。<br v-if="shareTab === 'clash'"><span v-if="shareTab === 'clash'">Clash Verge 请使用 Mihomo / Clash Meta 内核；旧版 Clash 不支持 VLESS Reality。优先复制“Clash Verge 订阅链接”到 Remote，或下载 yaml 后作为本地配置导入。</span></div>
+      <div class="notice warn modal-tip">{{ shareTip }}<br>默认二维码为单节点分享链接（vless/vmess/trojan/ss）；订阅二维码只用于批量更新，HTTP 订阅可能被 v2rayN 拦截。<br v-if="shareTab === 'clash'"><span v-if="shareTab === 'clash'">Clash Verge 请使用 Mihomo / Clash Meta 内核；旧版 Clash 不支持 VLESS Reality。优先复制“Clash Verge 订阅链接”到 Remote，或下载 yaml 后作为本地配置导入。</span></div>
       <div v-if="!shareAvailableNodes.length && shareTab !== 'subscription'" class="empty-state">该客户暂无可用入站，请先新增入站或检查客户关联入站。</div>
       <div v-else class="share-modal-body">
         <div class="share-config-box">
@@ -514,7 +515,7 @@ onMounted(load)
           <div><strong>{{ item.node.name }}</strong><span>{{ item.node.host }}:{{ item.node.port }}<template v-if="item.node.exit_label"> → 出口 {{ item.node.exit_label }}</template></span></div>
           <div class="node-row-actions">
             <button class="btn secondary" @click="copyAny(item.link, '节点链接')">复制链接</button>
-            <button class="btn secondary" @click="openQrZoom(qrTextForNode(item), item.node.name + ' 单节点二维码')">放大扫码</button><a class="btn secondary" :href="qrImageUrl(qrTextForNode(item), 760)" :download="item.node.name + '-vless-qr.gif'">下载二维码</a>
+            <button class="btn secondary" @click="openQrZoom(qrTextForNode(item), item.node.name + ' 单节点二维码')">放大扫码</button><a class="btn secondary" :href="qrImageUrl(qrTextForNode(item), 760)" :download="item.node.name + '-qr.gif'">下载二维码</a>
           </div>
         </div>
       </div>
