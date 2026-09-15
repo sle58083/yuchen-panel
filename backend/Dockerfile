@@ -1,0 +1,15 @@
+FROM golang:1.23 AS builder
+WORKDIR /src
+COPY . .
+RUN go test ./... && go build -o /out/yuchen-panel-api ./cmd/server
+
+FROM debian:bookworm-slim
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /app/data
+COPY --from=builder /out/yuchen-panel-api /app/yuchen-panel-api
+EXPOSE 8088
+CMD ["/app/yuchen-panel-api"]

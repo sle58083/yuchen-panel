@@ -1,0 +1,18 @@
+{
+  "latest": "0.7.7.1-clash-import-polish-agent-xray",
+  "version": "0.7.7.1",
+  "codename": "clash-import-polish",
+  "package": "yuchen-panel-v0.7.7.1-clash-import-polish.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v0.7.7.1/yuchen-panel-v0.7.7.1-clash-import-polish.zip",
+  "sha256": "REPLACE_WITH_SHA256_AFTER_ZIP_BUILD",
+  "min_supported_version": "0.7.5",
+  "released_at": "2026-07-01T00:00:00Z",
+  "changelog": [
+    "安装速度优化：外层安装和部署脚本默认使用 noninteractive/needrestart 自动模式，减少安装卡住概率",
+    "安装速度优化：已存在 unzip、curl、ca-certificates、nginx、rsync、python3、iproute2 时直接跳过依赖安装",
+    "安装速度优化：已安装 Xray-core 时默认跳过重新下载，避免重复安装耗时",
+    "新增 YC_FORCE_INSTALL_XRAY=1 可强制重装 Xray-core，新增 YC_SKIP_XRAY_INSTALL=1 可跳过 Xray 安装",
+    "安装日志增加阶段提示，安装完成后继续自动执行 yuchen-panel doctor 自检",
+    "不改客户管理、入站管理、Xray 配置生成、二维码、网络策略和 Agent apply 核心逻辑"
+  ]
+}

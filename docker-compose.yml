@@ -1,0 +1,35 @@
+services:
+  yuchen-panel-api:
+    build:
+      context: ./backend
+    container_name: yuchen-panel-api
+    ports:
+      - "127.0.0.1:${API_PORT:-8088}:8088"
+    environment:
+      - YC_API_ADDR=0.0.0.0:8088
+      - YC_JWT_SECRET=${YC_JWT_SECRET:-change-me-please}
+      - YC_AGENT_SHARED_SECRET=${YC_AGENT_SHARED_SECRET:-change-agent-secret}
+      - YC_ADMIN_USERNAME=${YC_ADMIN_USERNAME:-admin}
+      - YC_ADMIN_PASSWORD=${YC_ADMIN_PASSWORD:-admin123}
+      - YC_DB_PATH=/app/data/yuchen-panel.json
+      - YC_LOCAL_SERVER_IP=${YC_LOCAL_SERVER_IP:-127.0.0.1}
+      - YC_LOCAL_SERVER_HOST=${YC_LOCAL_SERVER_HOST:-127.0.0.1}
+      - YC_LOCAL_SERVER_NAME=${YC_LOCAL_SERVER_NAME:-本机服务器}
+      - YC_LOCAL_SERVER_REGION=${YC_LOCAL_SERVER_REGION:-Local}
+      - YC_LOCAL_SERVER_PROVIDER=${YC_LOCAL_SERVER_PROVIDER:-Self-hosted}
+      - YC_UPDATE_MANIFEST_URL=${YC_UPDATE_MANIFEST_URL:-}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  yuchen-panel-frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BASE_PATH: "/${WEB_BASE_PATH:-yuchen}/"
+    container_name: yuchen-panel-frontend
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5173}:5173"
+    depends_on:
+      - yuchen-panel-api
+    restart: unless-stopped

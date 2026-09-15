@@ -1,0 +1,554 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="/etc/yuchen-panel"
+PANEL_INFO="${CONFIG_DIR}/panel.info"
+APP_DIR="/opt/yuchen-panel"
+
+get_info() {
+  local key="$1"
+  if [[ -f "$PANEL_INFO" ]]; then
+    grep -E "^${key}=" "$PANEL_INFO" | head -n1 | cut -d= -f2- || true
+  fi
+}
+
+compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    echo "docker compose"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    echo "docker-compose"
+  else
+    echo ""
+  fi
+}
+
+install_mode() {
+  get_info INSTALL_MODE || true
+}
+
+restart_api() {
+  local mode
+  mode="$(install_mode)"
+  if [[ "$mode" == "fast" ]] || systemctl list-unit-files 2>/dev/null | grep -q '^yuchen-panel-api.service'; then
+    systemctl restart yuchen-panel-api
+    return
+  fi
+  local compose
+  compose="$(compose_cmd)"
+  if [[ -z "$compose" ]]; then
+    echo "docker compose not found"
+    exit 1
+  fi
+  cd "$APP_DIR"
+  $compose restart yuchen-panel-api >/dev/null
+}
+
+status_line() {
+  local label="$1"
+  local state="$2"
+  local detail="${3:-}"
+  if [[ "$state" == "ok" ]]; then
+    printf "[OK]   %s" "$label"
+  elif [[ "$state" == "warn" ]]; then
+    printf "[WARN] %s" "$label"
+  else
+    printf "[FAIL] %s" "$label"
+  fi
+  if [[ -n "$detail" ]]; then
+    printf " - %s" "$detail"
+  fi
+  printf "\n"
+}
+
+service_check() {
+  local unit="$1"
+  if systemctl is-active --quiet "$unit" 2>/dev/null; then
+    status_line "$unit" ok "active running"
+    return 0
+  fi
+  status_line "$unit" fail "not active"
+  return 1
+}
+
+recent_xray_restart_count() {
+  local lines
+  lines=$(journalctl -u xray --since "3 minutes ago" --no-pager 2>/dev/null \
+    | grep -E "Stopping Xray|Stopped Xray|Started Xray Service|Reading config|Xray .* started" || true)
+  if [[ -z "$lines" ]]; then
+    echo 0
+    return 0
+  fi
+  printf '%s\n' "$lines" | wc -l | tr -d ' '
+}
+
+
+backup_timestamp() {
+  date +%Y%m%d-%H%M%S
+}
+
+backup_dir() {
+  echo "$APP_DIR/backups"
+}
+
+mask_secret() {
+  local v="${1:-}"
+  if [[ -z "$v" ]]; then
+    echo "unknown"
+  else
+    echo "********"
+  fi
+}
+
+latest_backup_file() {
+  local dir
+  dir="$(backup_dir)"
+  find "$dir" -maxdepth 1 -type f -name 'yuchen-panel-backup-*.tar.gz' 2>/dev/null | sort | tail -n1
+}
+
+create_backup() {
+  local reason="${1:-manual}"
+  local dir ts tmp root backup item copied=0
+  dir="$(backup_dir)"
+  ts="$(backup_timestamp)"
+  backup="$dir/yuchen-panel-backup-${ts}.tar.gz"
+  mkdir -p "$dir"
+  tmp="$(mktemp -d)"
+  root="$tmp/root"
+  mkdir -p "$root"
+
+  cat > "$root/yuchen-backup-meta.txt" <<EOF_META
+Yuchen Panel backup
+created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+reason=${reason}
+source_host=$(hostname 2>/dev/null || echo unknown)
+version=$(get_info VERSION || true)
+install_mode=$(get_info INSTALL_MODE || true)
+EOF_META
+
+  local items=(
+    "$APP_DIR/data/yuchen-panel.json"
+    "$APP_DIR/.env"
+    "$PANEL_INFO"
+    "/etc/yuchen-panel/xray/config.json"
+    "/etc/nginx/conf.d/yuchen-panel.conf"
+    "/etc/systemd/system/yuchen-panel-api.service"
+    "/etc/systemd/system/yuchen-agent.service"
+    "/etc/systemd/system/xray.service.d/99-yuchen-panel.conf"
+  )
+
+  for item in "${items[@]}"; do
+    if [[ -e "$item" ]]; then
+      mkdir -p "$root$(dirname "$item")"
+      cp -a "$item" "$root$item"
+      copied=$((copied+1))
+    fi
+  done
+
+  if [[ "$copied" -eq 0 ]]; then
+    rm -rf "$tmp"
+    echo "No existing Yuchen Panel files found, backup skipped."
+    return 0
+  fi
+
+  tar -C "$root" -czf "$backup" .
+  chmod 600 "$backup" 2>/dev/null || true
+  rm -rf "$tmp"
+  echo "$backup"
+}
+
+print_backup_list() {
+  local dir
+  dir="$(backup_dir)"
+  echo "Yuchen Panel Backups"
+  echo "=============================="
+  echo "Directory: $dir"
+  if [[ ! -d "$dir" ]]; then
+    echo "No backup directory found."
+    return 0
+  fi
+  local files
+  files=$(find "$dir" -maxdepth 1 -type f -name 'yuchen-panel-backup-*.tar.gz' 2>/dev/null | sort -r || true)
+  if [[ -z "$files" ]]; then
+    echo "No backups found."
+    return 0
+  fi
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    printf "%s  %s\n" "$(du -h "$f" | awk '{print $1}')" "$f"
+  done <<< "$files"
+}
+
+restore_backup() {
+  local backup="${1:-}"
+  if [[ -z "$backup" ]]; then
+    backup="$(latest_backup_file)"
+  fi
+  if [[ -z "$backup" || ! -f "$backup" ]]; then
+    echo "Backup file not found. Use: yuchen-panel backup-list"
+    exit 1
+  fi
+  echo "Restoring backup: $backup"
+  echo "Creating safety backup before restore..."
+  create_backup "pre-restore" >/dev/null || true
+  tar -xzf "$backup" -C /
+  chmod 600 "$APP_DIR/.env" 2>/dev/null || true
+  chmod 600 "$PANEL_INFO" 2>/dev/null || true
+  chmod 600 /etc/yuchen-panel/xray/config.json 2>/dev/null || true
+  systemctl daemon-reload || true
+  systemctl restart yuchen-panel-api 2>/dev/null || true
+  systemctl restart yuchen-agent 2>/dev/null || true
+  systemctl restart xray 2>/dev/null || true
+  systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+  echo "Restore completed. Running doctor..."
+  yuchen-panel doctor || true
+}
+
+
+case "${1:-}" in
+  info)
+    if [[ ! -f "$PANEL_INFO" ]]; then
+      echo "Yuchen Panel info not found."
+      exit 1
+    fi
+    USERNAME=$(get_info USERNAME)
+    PASSWORD=$(get_info PASSWORD)
+    API_TOKEN=$(get_info API_TOKEN)
+    PORT=$(get_info PORT)
+    WEB_BASE_PATH=$(get_info WEB_BASE_PATH)
+    ACCESS_URL=$(get_info ACCESS_URL)
+    DATABASE=$(get_info DATABASE)
+    VERSION=$(get_info VERSION)
+    MODE=$(get_info INSTALL_MODE)
+    SHOW_SECRET="false"
+    if [[ "${2:-}" == "--show-secret" ]]; then
+      SHOW_SECRET="true"
+    fi
+    if [[ "$SHOW_SECRET" == "true" ]]; then
+      PASSWORD_DISPLAY="${PASSWORD:-unknown}"
+      API_TOKEN_DISPLAY="${API_TOKEN:-unknown}"
+    else
+      PASSWORD_DISPLAY="$(mask_secret "${PASSWORD:-}")"
+      API_TOKEN_DISPLAY="$(mask_secret "${API_TOKEN:-}")"
+    fi
+    echo "Yuchen Panel Info"
+    echo "=============================="
+    printf "%-12s %s\n" "Version:" "${VERSION:-unknown}"
+    printf "%-12s %s\n" "Mode:" "${MODE:-docker}"
+    printf "%-12s %s\n" "Username:" "${USERNAME:-unknown}"
+    printf "%-12s %s\n" "Password:" "$PASSWORD_DISPLAY"
+    printf "%-12s %s\n" "API Token:" "$API_TOKEN_DISPLAY"
+    printf "%-12s %s\n" "Port:" "${PORT:-unknown}"
+    printf "%-12s %s\n" "WebPath:" "${WEB_BASE_PATH:-unknown}"
+    printf "%-12s %s\n" "Database:" "${DATABASE:-unknown}"
+    printf "%-12s %s\n" "Access URL:" "${ACCESS_URL:-unknown}"
+    if [[ "$SHOW_SECRET" != "true" ]]; then
+      echo "Tip: use 'yuchen-panel info --show-secret' to display Password and API Token."
+    fi
+    echo
+    echo "Reminder: open the panel port and every node inbound port in your cloud firewall/security group."
+    ;;
+
+  status)
+    MODE=$(install_mode)
+    if [[ "$MODE" == "fast" ]] || systemctl list-unit-files 2>/dev/null | grep -q '^yuchen-panel-api.service'; then
+      systemctl status yuchen-panel-api --no-pager -l 2>/dev/null || true
+      echo
+      systemctl status yuchen-agent --no-pager -l 2>/dev/null || true
+      echo
+      systemctl status nginx --no-pager -l 2>/dev/null || true
+    else
+      COMPOSE=$(compose_cmd)
+      if [[ -n "$COMPOSE" && -d "$APP_DIR" ]]; then
+        cd "$APP_DIR"
+        $COMPOSE ps || true
+        echo
+        systemctl status yuchen-agent --no-pager -l 2>/dev/null || true
+        systemctl status nginx --no-pager -l 2>/dev/null || true
+      else
+        echo "Docker Compose not found or app dir missing."
+      fi
+    fi
+    ;;
+
+  restart)
+    MODE=$(install_mode)
+    if [[ "$MODE" == "fast" ]] || systemctl list-unit-files 2>/dev/null | grep -q '^yuchen-panel-api.service'; then
+      systemctl restart yuchen-panel-api 2>/dev/null || true
+      systemctl restart yuchen-agent 2>/dev/null || true
+      systemctl restart nginx 2>/dev/null || true
+    else
+      COMPOSE=$(compose_cmd)
+      if [[ -z "$COMPOSE" ]]; then
+        echo "docker compose not found"
+        exit 1
+      fi
+      cd "$APP_DIR"
+      $COMPOSE restart
+      systemctl restart yuchen-agent 2>/dev/null || true
+      systemctl restart nginx 2>/dev/null || true
+    fi
+    echo "Yuchen Panel restarted."
+    ;;
+
+  logs)
+    MODE=$(install_mode)
+    if [[ "$MODE" == "fast" ]] || systemctl list-unit-files 2>/dev/null | grep -q '^yuchen-panel-api.service'; then
+      echo "Showing fast-mode logs. Ctrl+C to exit."
+      journalctl -u yuchen-panel-api -u yuchen-agent -f --no-pager
+    else
+      COMPOSE=$(compose_cmd)
+      if [[ -z "$COMPOSE" ]]; then
+        echo "docker compose not found"
+        exit 1
+      fi
+      cd "$APP_DIR"
+      $COMPOSE logs --tail=120 -f
+    fi
+    ;;
+
+  reset-password)
+    if [[ ! -f "$PANEL_INFO" ]]; then
+      echo "Yuchen Panel info not found."
+      exit 1
+    fi
+    DB_PATH="$APP_DIR/data/yuchen-panel.json"
+    if [[ ! -f "$DB_PATH" ]]; then
+      echo "Database not found: $DB_PATH"
+      exit 1
+    fi
+    NEW_PASSWORD=$(python3 - <<'PY_RANDOM'
+import random, string
+rng = random.SystemRandom()
+alphabet = string.ascii_letters + string.digits
+print(''.join(rng.choice(alphabet) for _ in range(12)), end='')
+PY_RANDOM
+)
+    NEW_USERNAME="admin"
+    python3 - "$DB_PATH" "$NEW_USERNAME" "$NEW_PASSWORD" <<'PY'
+import base64, hashlib, json, os, sys
+path, username, password = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding='utf-8') as f:
+    data=json.load(f)
+admins=data.get('admins') or {}
+if not admins:
+    raise SystemExit('no admin users found')
+first_key=next(iter(admins))
+admin=admins[first_key]
+admin['username']=username
+salt=os.urandom(16)
+dk=hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 120000, dklen=32)
+admin['password_hash']='pbkdf2-sha256$120000$%s$%s' % (
+    base64.b64encode(salt).decode().rstrip('='),
+    base64.b64encode(dk).decode().rstrip('='),
+)
+admin['enabled']=True
+admins[first_key]=admin
+data['admins']=admins
+tmp=path+'.tmp'
+with open(tmp,'w',encoding='utf-8') as f:
+    json.dump(data,f,ensure_ascii=False,indent=2)
+os.replace(tmp,path)
+PY
+    sed -i -E "s/^USERNAME=.*/USERNAME=${NEW_USERNAME}/" "$PANEL_INFO"
+    sed -i -E "s/^PASSWORD=.*/PASSWORD=${NEW_PASSWORD}/" "$PANEL_INFO"
+    restart_api
+    echo "Password reset successfully."
+    echo "Username: ${NEW_USERNAME}"
+    echo "Password: ${NEW_PASSWORD}"
+    ;;
+
+
+  doctor)
+    FAILS=0
+    WARNS=0
+    echo "Yuchen Panel Doctor"
+    echo "=============================="
+
+    if [[ -f "$PANEL_INFO" ]]; then
+      status_line "panel.info" ok "$PANEL_INFO"
+    else
+      status_line "panel.info" fail "missing: $PANEL_INFO"
+      FAILS=$((FAILS+1))
+    fi
+
+    VERSION=$(get_info VERSION || true)
+    MODE=$(get_info INSTALL_MODE || true)
+    PORT=$(get_info PORT || true)
+    WEB_BASE_PATH=$(get_info WEB_BASE_PATH || true)
+    ACCESS_URL=$(get_info ACCESS_URL || true)
+    printf "%-14s %s\n" "Version:" "${VERSION:-unknown}"
+    printf "%-14s %s\n" "Mode:" "${MODE:-unknown}"
+    printf "%-14s %s\n" "Panel port:" "${PORT:-unknown}"
+    printf "%-14s %s\n" "WebPath:" "${WEB_BASE_PATH:-unknown}"
+    printf "%-14s %s\n" "Access URL:" "${ACCESS_URL:-unknown}"
+    echo
+
+    for unit in yuchen-panel-api yuchen-agent xray nginx; do
+      if ! service_check "$unit"; then
+        FAILS=$((FAILS+1))
+      fi
+    done
+
+    if command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8088/api/health >/dev/null 2>&1; then
+      status_line "API health" ok "http://127.0.0.1:8088/api/health"
+    else
+      status_line "API health" fail "local API is not responding"
+      FAILS=$((FAILS+1))
+    fi
+
+    if [[ -n "${PORT:-}" ]] && command -v curl >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+      status_line "Nginx API proxy" ok "http://127.0.0.1:${PORT}/api/health"
+    else
+      status_line "Nginx API proxy" fail "panel port API proxy is not responding"
+      FAILS=$((FAILS+1))
+    fi
+
+    if nginx -t >/dev/null 2>&1; then
+      status_line "Nginx config" ok "syntax ok"
+    else
+      status_line "Nginx config" fail "nginx -t failed"
+      FAILS=$((FAILS+1))
+    fi
+
+    if [[ -f /etc/yuchen-panel/xray/config.json ]]; then
+      status_line "Xray config" ok "/etc/yuchen-panel/xray/config.json"
+    else
+      status_line "Xray config" warn "missing; create an inbound/client to generate it"
+      WARNS=$((WARNS+1))
+    fi
+
+    if [[ -f "$APP_DIR/.env" ]] && grep -q '^YC_UPDATE_MANIFEST_URL=' "$APP_DIR/.env"; then
+      MANIFEST=$(grep -E '^YC_UPDATE_MANIFEST_URL=' "$APP_DIR/.env" | head -n1 | cut -d= -f2-)
+      status_line "Update manifest" ok "$MANIFEST"
+    else
+      status_line "Update manifest" warn "YC_UPDATE_MANIFEST_URL is not set"
+      WARNS=$((WARNS+1))
+    fi
+
+    BACKUP_DIR="$(backup_dir)"
+    if [[ -d "$BACKUP_DIR" ]]; then
+      LATEST_BACKUP="$(latest_backup_file || true)"
+      if [[ -n "$LATEST_BACKUP" ]]; then
+        status_line "Backup status" ok "latest: $LATEST_BACKUP"
+      else
+        status_line "Backup status" warn "backup directory exists but no backup file found"
+        WARNS=$((WARNS+1))
+      fi
+    else
+      status_line "Backup status" warn "backup directory missing"
+      WARNS=$((WARNS+1))
+    fi
+
+    if [[ -f "$APP_DIR/data/yuchen-panel.json" ]]; then
+      status_line "Data file" ok "$APP_DIR/data/yuchen-panel.json"
+    else
+      status_line "Data file" fail "missing: $APP_DIR/data/yuchen-panel.json"
+      FAILS=$((FAILS+1))
+    fi
+
+    RESTART_LINES=$(recent_xray_restart_count || echo 0)
+    if [[ "${RESTART_LINES:-0}" -gt 8 ]]; then
+      status_line "Xray restart watch" warn "recent restart/config lines in 3 minutes: ${RESTART_LINES}"
+      WARNS=$((WARNS+1))
+    else
+      status_line "Xray restart watch" ok "no abnormal restart loop detected"
+    fi
+
+    echo
+    if [[ "$FAILS" -eq 0 ]]; then
+      echo "Doctor result: PASS (${WARNS} warning(s))"
+      exit 0
+    fi
+    echo "Doctor result: FAIL (${FAILS} failure(s), ${WARNS} warning(s))"
+    echo "Tip: run 'yuchen-panel logs' or 'journalctl -u yuchen-panel-api -u yuchen-agent -u xray -u nginx -n 120 --no-pager'."
+    exit 1
+    ;;
+
+  backup)
+    BACKUP_FILE="$(create_backup "manual")"
+    if [[ -n "$BACKUP_FILE" && -f "$BACKUP_FILE" ]]; then
+      echo "Backup created: $BACKUP_FILE"
+    fi
+    ;;
+
+  backup-list)
+    print_backup_list
+    ;;
+
+  restore)
+    restore_backup "${2:-}"
+    ;;
+
+  update)
+    MANIFEST_URL="${YC_UPDATE_MANIFEST_URL:-https://raw.githubusercontent.com/sle58083/yuchen-panel/main/version.json}"
+    echo "Yuchen Panel Update Helper"
+    echo "Manifest: ${MANIFEST_URL}"
+    echo
+    echo "This helper checks the remote version manifest. The web panel also provides: 系统升级 -> 检查更新。"
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo "python3 not found. Please use the web panel or install python3."
+      exit 1
+    fi
+    python3 - "$MANIFEST_URL" <<'PY_UPDATE'
+import json, sys, urllib.request
+url=sys.argv[1]
+try:
+    with urllib.request.urlopen(url, timeout=8) as r:
+        data=json.loads(r.read().decode())
+except Exception as e:
+    print('Failed to fetch manifest:', e)
+    sys.exit(1)
+latest=data.get('latest') or data.get('version') or '-'
+pkg=data.get('package') or '-'
+dl=data.get('download_url') or '-'
+sha=data.get('sha256') or ''
+print('Latest:', latest)
+print('Package:', pkg)
+print('Download:', dl)
+if sha:
+    print('SHA256:', sha)
+print('\nCopy this command to upgrade after confirming the package:')
+print('cd /root && mkdir -p yuchen-panel-upgrades && cd yuchen-panel-upgrades && curl -L --fail -o %s %s && unzip -o %s && cd %s && bash deploy/install.sh 2>&1 | tee /root/yuchen-panel-upgrade.log' % (pkg, dl, pkg, pkg[:-4] if pkg.endswith('.zip') else pkg))
+PY_UPDATE
+    ;;
+
+  uninstall)
+    MODE=$(install_mode)
+    if [[ "$MODE" == "fast" ]] || systemctl list-unit-files 2>/dev/null | grep -q '^yuchen-panel-api.service'; then
+      systemctl stop yuchen-panel-api 2>/dev/null || true
+      systemctl disable yuchen-panel-api 2>/dev/null || true
+      rm -f /etc/systemd/system/yuchen-panel-api.service
+    fi
+    COMPOSE=$(compose_cmd)
+    if [[ -n "$COMPOSE" && -d "$APP_DIR" ]]; then
+      cd "$APP_DIR"
+      $COMPOSE down || true
+    fi
+    systemctl stop yuchen-agent 2>/dev/null || true
+    systemctl disable yuchen-agent 2>/dev/null || true
+    rm -f /etc/systemd/system/yuchen-agent.service
+    rm -f /etc/nginx/conf.d/yuchen-panel.conf
+    rm -f /usr/local/bin/yuchen-panel
+    systemctl daemon-reload || true
+    systemctl restart nginx 2>/dev/null || true
+    echo "Yuchen Panel uninstalled."
+    echo "Program directory kept: $APP_DIR"
+    echo "Config directory kept:  $CONFIG_DIR"
+    ;;
+
+  *)
+    echo "Yuchen Panel CLI"
+    echo
+    echo "Usage:"
+    echo "  yuchen-panel info"
+    echo "  yuchen-panel status"
+    echo "  yuchen-panel restart"
+    echo "  yuchen-panel logs"
+    echo "  yuchen-panel reset-password"
+    echo "  yuchen-panel backup"
+    echo "  yuchen-panel backup-list"
+    echo "  yuchen-panel restore [backup-file]"
+    echo "  yuchen-panel update"
+    echo "  yuchen-panel uninstall"
+    ;;
+esac
