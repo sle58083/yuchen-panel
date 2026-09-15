@@ -4,9 +4,9 @@
   "codename": "stable",
   "package": "yuchen-panel-v1.0.1-stable.zip",
   "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.1/yuchen-panel-v1.0.1-stable.zip",
-  "sha256": "PENDING_CI_UPDATE",
+  "sha256": "230da902bdf030d072c5064f476b9a8b3e5069ecc7b7899a0c69ac45eadcb3f8",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-09-15T17:30:00Z",
+  "released_at": "2026-09-15T17:29:59Z",
   "changelog": [
     "客户管理多协议支持：VMess/Trojan/Shadowsocks 入站可绑定客户并从订阅导出",
     "订阅导出生成正确的 vmess://（base64 JSON）、trojan://、ss://（SIP002）分享链接",
