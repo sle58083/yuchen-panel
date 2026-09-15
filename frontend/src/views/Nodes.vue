@@ -58,6 +58,8 @@ const emptyForm = () => ({
   socks_username: 'yuchen',
   socks_password: '',
   socks_udp: false,
+  ss_method: 'aes-256-gcm',
+  ss_password: '',
   remark: '',
   enabled: true,
 })
@@ -239,6 +241,8 @@ function editNode(n:any) {
     socks_username: n.socks_username || 'yuchen',
     socks_password: n.socks_password || '',
     socks_udp: n.socks_udp === true,
+    ss_method: n.ss_method || 'aes-256-gcm',
+    ss_password: n.ss_password || '',
     remark: n.remark || '',
     enabled: n.enabled !== false,
   }
@@ -401,6 +405,17 @@ onMounted(load)
       </div>
     </div>
 
+    <div v-if="form.protocol === 'shadowsocks'" class="reality-box">
+      <div class="row-between">
+        <div><h2>Shadowsocks 凭据</h2><p class="page-desc">Xray 的 SS 入站是单用户凭据：加密方式和密码保存在入站上，客户订阅会自动带上这组凭据。</p></div>
+        <button class="btn secondary" @click="form.ss_password = randomPassword(22)">重新生成密码</button>
+      </div>
+      <div class="form node-form clean-form reality-form">
+        <label class="field"><span>加密方式</span><select v-model="form.ss_method"><option>aes-256-gcm</option><option>chacha20-poly1305</option><option>aes-128-gcm</option><option>2022-blake3-aes-256-gcm</option><option>2022-blake3-chacha20-poly1305</option></select><em class="field-tip">aes-256-gcm 兼容性最好；2022 系列需要客户端同步支持。</em></label>
+        <label class="field"><span>密码</span><input v-model="form.ss_password" placeholder="留空保存时自动生成" /></label>
+      </div>
+    </div>
+
     <div v-if="form.protocol !== 'socks' && form.security==='reality'" class="reality-box">
       <div class="row-between">
         <div><h2>Reality 推荐配置</h2><p class="page-desc">用于提升连接层 TLS 特征自然度。账号稳定性仍取决于 IP、DNS、设备环境和操作行为。</p></div>
@@ -489,7 +504,7 @@ onMounted(load)
 
   <div v-if="qrZoomText" class="modal-mask qr-zoom-mask" @click.self="closeQrZoom">
     <div class="modal-card qr-zoom-card">
-      <div class="modal-head"><div><span class="eyebrow">放大二维码</span><h2>{{ qrZoomTitle }}</h2><p>当前二维码内容为 vless:// 单节点链接；V2rayN 推荐下载图片后从图片导入。</p></div><button class="icon-btn" @click="closeQrZoom">×</button></div>
+      <div class="modal-head"><div><span class="eyebrow">放大二维码</span><h2>{{ qrZoomTitle }}</h2><p>当前二维码内容为单节点分享链接（vless/vmess/trojan/ss）；V2rayN 推荐下载图片后从图片导入。</p></div><button class="icon-btn" @click="closeQrZoom">×</button></div>
       <div class="qr-zoom-body"><div class="qr-white-stage"><img :src="qrImageUrl(qrZoomText, 760)" alt="放大二维码" /></div><div class="qr-zoom-actions"><button class="btn" @click="copyShareLink">复制当前链接</button><a class="btn secondary" :href="qrImageUrl(qrZoomText, 900)" :download="qrZoomTitle + '.gif'">下载二维码</a><button class="btn secondary" @click="closeQrZoom">关闭</button></div></div>
     </div>
   </div>

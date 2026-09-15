@@ -19,6 +19,11 @@ func (r *Router) clients(w http.ResponseWriter, req *http.Request) {
 		defer r.store.Mu.RUnlock()
 		list := make([]model.Client, 0, len(r.store.Data.Clients))
 		for _, item := range r.store.Data.Clients {
+			// 旧客户没有持久化密码时按确定性规则补全，保证前端 trojan:// 分享链接
+			// 与 Xray 服务端 clients 密码一致。
+			if strings.TrimSpace(item.Password) == "" {
+				item.Password = xray.TrojanClientPassword(item)
+			}
 			list = append(list, item)
 		}
 		writeJSON(w, http.StatusOK, list)
@@ -32,6 +37,10 @@ func (r *Router) clients(w http.ResponseWriter, req *http.Request) {
 		body.ID = store.NewID("cli")
 		if body.UUID == "" {
 			body.UUID = store.NewUUID()
+		}
+		// Trojan 等密码协议的凭据：未指定时自动生成。
+		if strings.TrimSpace(body.Password) == "" {
+			body.Password = store.NewPassword()
 		}
 		if body.SubscribeToken == "" {
 			body.SubscribeToken = store.NewToken()
@@ -96,6 +105,9 @@ func (r *Router) clientByID(w http.ResponseWriter, req *http.Request) {
 	}
 	switch req.Method {
 	case http.MethodGet:
+		if strings.TrimSpace(item.Password) == "" {
+			item.Password = xray.TrojanClientPassword(item)
+		}
 		writeJSON(w, http.StatusOK, item)
 	case http.MethodPut:
 		var body model.Client
@@ -107,6 +119,10 @@ func (r *Router) clientByID(w http.ResponseWriter, req *http.Request) {
 		body.CreatedAt = item.CreatedAt
 		if body.UUID == "" {
 			body.UUID = item.UUID
+		}
+		// 编辑时未填密码则保留原密码，避免意外轮换导致客户端断连。
+		if strings.TrimSpace(body.Password) == "" {
+			body.Password = item.Password
 		}
 		if body.SubscribeToken == "" {
 			body.SubscribeToken = item.SubscribeToken
@@ -264,7 +280,7 @@ func (r *Router) createClientWithSocks5Relay(w http.ResponseWriter, req *http.Re
 		return
 	}
 	client := model.Client{
-		ID: store.NewID("cli"), Username: body.Username, Email: body.Email, UUID: store.NewUUID(), SubscribeToken: store.NewToken(), TrafficLimitGB: body.TrafficLimitGB, Enabled: true, CreatedAt: now, UpdatedAt: now,
+		ID: store.NewID("cli"), Username: body.Username, Email: body.Email, UUID: store.NewUUID(), Password: store.NewPassword(), SubscribeToken: store.NewToken(), TrafficLimitGB: body.TrafficLimitGB, Enabled: true, CreatedAt: now, UpdatedAt: now,
 	}
 	if body.ExpireAt != "" {
 		if t, err := time.Parse(time.RFC3339, body.ExpireAt); err == nil {

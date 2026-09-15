@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 
 	"yuchen-panel/backend/internal/model"
@@ -61,15 +62,28 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 			continue
 		}
 
-		boundClients := makeVlessClients(clients, node.ID)
+		boundClients := makeInboundClients(clients, node.ID, node.Protocol)
+		settings := map[string]any{}
+		switch strings.ToLower(node.Protocol) {
+		case "shadowsocks":
+			// Xray SS 入站是单用户凭据：method + password 直接放在 settings 上。
+			method, password := SSCredentials(node)
+			settings["method"] = method
+			settings["password"] = password
+			settings["network"] = "tcp,udp"
+		case "vmess":
+			settings["clients"] = boundClients
+		case "trojan":
+			settings["clients"] = boundClients
+		default:
+			settings["clients"] = boundClients
+			settings["decryption"] = "none"
+		}
 		inbound := map[string]any{
 			"listen":   "0.0.0.0",
 			"port":     node.Port,
 			"protocol": node.Protocol,
-			"settings": map[string]any{
-				"clients":    boundClients,
-				"decryption": "none",
-			},
+			"settings": settings,
 			"sniffing": map[string]any{
 				"enabled":      true,
 				"destOverride": []any{"http", "tls", "quic"},
@@ -242,7 +256,10 @@ func makeRelayVlessClients(clients []model.Client, relayID string) []map[string]
 	return boundClients
 }
 
-func makeVlessClients(clients []model.Client, nodeID string) []map[string]any {
+// makeInboundClients 根据入站协议生成正确的 Xray clients 数组：
+// vless: {id, email, flow}；vmess: {id, alterId:0, email}；trojan: {password, email}。
+func makeInboundClients(clients []model.Client, nodeID string, protocol string) []map[string]any {
+	protocol = strings.ToLower(protocol)
 	boundClients := make([]map[string]any, 0)
 	for _, c := range clients {
 		if !c.Enabled || (!c.ExpireAt.IsZero() && c.ExpireAt.Before(time.Now())) {
@@ -252,10 +269,21 @@ func makeVlessClients(clients []model.Client, nodeID string) []map[string]any {
 		if nodeID != "" && len(c.NodeIDs) > 0 && !contains(c.NodeIDs, nodeID) {
 			continue
 		}
-		if c.UUID == "" {
-			continue
+		email := c.Username
+		switch protocol {
+		case "trojan":
+			boundClients = append(boundClients, map[string]any{"password": TrojanClientPassword(c), "email": email})
+		case "vmess":
+			if c.UUID == "" {
+				continue
+			}
+			boundClients = append(boundClients, map[string]any{"id": c.UUID, "alterId": 0, "email": email})
+		default:
+			if c.UUID == "" {
+				continue
+			}
+			boundClients = append(boundClients, map[string]any{"id": c.UUID, "email": email, "flow": ""})
 		}
-		boundClients = append(boundClients, map[string]any{"id": c.UUID, "email": c.Username, "flow": ""})
 	}
 	sort.SliceStable(boundClients, func(i, j int) bool {
 		return clientSortKey(boundClients[i]) < clientSortKey(boundClients[j])

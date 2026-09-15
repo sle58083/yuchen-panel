@@ -3,8 +3,8 @@ import qrcode from 'qrcode-generator'
 export type ShareFormat = 'v2rayn' | 'shadowrocket' | 'clash' | 'singbox'
 
 export const shareFormatOptions: Array<{ value: ShareFormat; label: string; tip: string }> = [
-  { value: 'v2rayn', label: 'V2rayN', tip: '通用 VLESS Reality 单节点链接，优先用于扫码导入。' },
-  { value: 'shadowrocket', label: 'Shadowrocket', tip: 'iPhone 小火箭，使用同一条 VLESS Reality 通用链接。' },
+  { value: 'v2rayn', label: 'V2rayN', tip: '生成 vless:// / vmess:// / trojan:// / ss:// 单节点链接，优先用于扫码导入。' },
+  { value: 'shadowrocket', label: 'Shadowrocket', tip: 'iPhone 小火箭，使用同一条单节点链接。' },
   { value: 'clash', label: 'Clash Meta', tip: '生成 Clash Meta / Mihomo YAML。Clash Verge 建议优先使用专用订阅链接或下载 yaml 文件。' },
   { value: 'singbox', label: 'sing-box', tip: '生成 sing-box JSON 配置，可用于 sing-box / SFI。' },
 ]
@@ -81,12 +81,14 @@ export function clientCanUseNode(client: any, node: any): boolean {
   return ids.length === 0 || ids.includes(node.id)
 }
 
+// 客户可分享的入站协议：SOCKS5 / dokodemo-door 属于内部链路，不生成客户订阅。
+const SHAREABLE_PROTOCOLS = ['vless', 'vmess', 'trojan', 'shadowsocks']
+
 export function isClientShareNode(node: any): boolean {
-  return String(node?.protocol || '').toLowerCase() === 'vless'
+  return SHAREABLE_PROTOCOLS.includes(String(node?.protocol || '').toLowerCase())
 }
 
 export function nodesForClient(client: any, nodes: any[]): any[] {
-  // SOCKS5 入站是给中转服务器连接落地出口用的，不直接生成客户 VLESS 订阅/二维码。
   return nodes.filter(n => n && n.enabled !== false && isClientShareNode(n) && clientCanUseNode(client, n))
 }
 
@@ -120,6 +122,18 @@ function transportOf(node: any): string {
   return valueOr(node.transport, 'tcp').toLowerCase()
 }
 
+function utf8ToBase64(s: string): string {
+  // Unicode 安全的 base64：vmess JSON 里可能包含中文节点名。
+  const bytes = new TextEncoder().encode(s)
+  let bin = ''
+  bytes.forEach(b => { bin += String.fromCharCode(b) })
+  return btoa(bin)
+}
+
+function utf8ToBase64Url(s: string): string {
+  return utf8ToBase64(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shadowrocket' = 'v2rayn'): string {
   const host = nodeHost(node)
   const port = Number(node.port || 443)
@@ -144,21 +158,88 @@ export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shado
   return `vless://${client.uuid}@${host}:${port}?${q.toString()}#${label}`
 }
 
+// buildVmessLink 生成 vmess:// 链接（v2rayN base64 JSON 格式），与后端订阅导出一致。
+export function buildVmessLink(node: any, client: any): string {
+  const transport = transportOf(node)
+  const security = valueOr(node.security, 'none').toLowerCase()
+  const obj: any = {
+    v: '2',
+    ps: nodeName(node),
+    add: nodeHost(node),
+    port: String(Number(node.port || 443)),
+    id: String(client.uuid || ''),
+    aid: '0',
+    scy: 'auto',
+    net: transport,
+    type: 'none',
+    host: '',
+    path: '',
+    tls: '',
+  }
+  if (transport === 'ws') obj.path = String(node.path || '')
+  if (transport === 'grpc') obj.path = String(node.path || '').replace(/^\/+/, '')
+  if (security === 'tls' || security === 'reality') {
+    obj.tls = 'tls'
+    obj.sni = String(node.sni || '')
+    obj.fp = valueOr(node.fingerprint, 'chrome')
+  }
+  if (security === 'reality') {
+    obj.pbk = String(node.reality_public_key || '')
+    obj.sid = String(node.reality_short_id || '')
+    obj.spx = valueOr(node.reality_spider_x, '/')
+  }
+  return `vmess://${utf8ToBase64(JSON.stringify(obj))}`
+}
+
+// buildTrojanLink 生成 trojan:// 链接，密码与后端 Xray clients 保持一致。
+export function buildTrojanLink(node: any, client: any): string {
+  const host = nodeHost(node)
+  const port = Number(node.port || 443)
+  const transport = transportOf(node)
+  const security = valueOr(node.security, 'none').toLowerCase()
+  const q = new URLSearchParams()
+  if (security === 'reality') {
+    q.set('security', 'reality')
+    q.set('fp', valueOr(node.fingerprint, 'chrome'))
+    if (node.reality_public_key) q.set('pbk', node.reality_public_key)
+    if (node.reality_short_id) q.set('sid', node.reality_short_id)
+    q.set('spx', valueOr(node.reality_spider_x, '/'))
+  } else {
+    q.set('security', 'tls')
+  }
+  if (node.sni) q.set('sni', node.sni)
+  q.set('type', transport)
+  if (transport === 'ws' && node.path) q.set('path', node.path)
+  if (transport === 'grpc' && node.path) q.set('serviceName', String(node.path).replace(/^\/+/, ''))
+  const label = encodeURIComponent(nodeName(node))
+  const password = String(client.password || client.uuid || '')
+  return `trojan://${password}@${host}:${port}?${q.toString()}#${label}`
+}
+
+// buildSSLink 生成 SIP002 ss:// 链接。SS 凭据保存在入站上（Xray SS 入站为单用户）。
+export function buildSSLink(node: any): string {
+  const method = valueOr(node.ss_method, 'aes-256-gcm')
+  const password = String(node.ss_password || '')
+  const userInfo = utf8ToBase64Url(`${method}:${password}`)
+  const label = encodeURIComponent(nodeName(node))
+  return `ss://${userInfo}@${nodeHost(node)}:${Number(node.port || 443)}#${label}`
+}
+
+// buildNodeLink 按入站协议生成对应客户端分享链接。
+export function buildNodeLink(node: any, client: any, format: 'v2rayn' | 'shadowrocket' = 'v2rayn'): string {
+  const proto = String(node?.protocol || '').toLowerCase()
+  if (proto === 'vmess') return buildVmessLink(node, client)
+  if (proto === 'trojan') return buildTrojanLink(node, client)
+  if (proto === 'shadowsocks') return buildSSLink(node)
+  return buildVlessLink(node, client, format)
+}
+
 function yamlQuote(v: any): string {
   return JSON.stringify(String(v ?? ''))
 }
 
-function clashProxy(node: any, client: any): string {
-  const transport = transportOf(node)
-  const lines: string[] = []
-  lines.push(`  - name: ${yamlQuote(safeName(node))}`)
-  lines.push(`    type: vless`)
-  lines.push(`    server: ${yamlQuote(nodeHost(node))}`)
-  lines.push(`    port: ${Number(node.port || 443)}`)
-  lines.push(`    uuid: ${yamlQuote(client.uuid)}`)
-  lines.push(`    network: ${yamlQuote(transport)}`)
-  lines.push(`    udp: true`)
-  if (isReality(node) || String(node.security || '').toLowerCase() === 'tls') {
+function clashProxyTail(node: any, security: string, transport: string, lines: string[]) {
+  if (security === 'reality' || security === 'tls') {
     lines.push(`    tls: true`)
     if (node.sni) lines.push(`    servername: ${yamlQuote(node.sni)}`)
     lines.push(`    client-fingerprint: ${yamlQuote(valueOr(node.fingerprint, 'chrome'))}`)
@@ -166,7 +247,7 @@ function clashProxy(node: any, client: any): string {
   } else {
     lines.push(`    tls: false`)
   }
-  if (isReality(node)) {
+  if (security === 'reality') {
     lines.push(`    reality-opts:`)
     lines.push(`      public-key: ${yamlQuote(node.reality_public_key || '')}`)
     if (node.reality_short_id) lines.push(`      short-id: ${yamlQuote(node.reality_short_id || '')}`)
@@ -179,6 +260,46 @@ function clashProxy(node: any, client: any): string {
     lines.push(`    grpc-opts:`)
     lines.push(`      grpc-service-name: ${yamlQuote(String(node.path).replace(/^\/+/, ''))}`)
   }
+}
+
+function clashProxy(node: any, client: any): string {
+  const proto = String(node?.protocol || '').toLowerCase()
+  const transport = transportOf(node)
+  const security = valueOr(node.security, 'none').toLowerCase()
+  const lines: string[] = []
+  lines.push(`  - name: ${yamlQuote(safeName(node))}`)
+  lines.push(`    server: ${yamlQuote(nodeHost(node))}`)
+  lines.push(`    port: ${Number(node.port || 443)}`)
+  if (proto === 'vmess') {
+    lines.push(`    type: vmess`)
+    lines.push(`    uuid: ${yamlQuote(client.uuid)}`)
+    lines.push(`    alterId: 0`)
+    lines.push(`    cipher: auto`)
+    lines.push(`    udp: true`)
+    clashProxyTail(node, security, transport, lines)
+    return lines.join('\n')
+  }
+  if (proto === 'trojan') {
+    lines.push(`    type: trojan`)
+    lines.push(`    password: ${yamlQuote(String(client.password || client.uuid || ''))}`)
+    lines.push(`    network: ${yamlQuote(transport)}`)
+    lines.push(`    udp: true`)
+    // Trojan 协议本身要求 TLS；reality 时输出 reality-opts。
+    clashProxyTail(node, security === 'reality' ? 'reality' : 'tls', transport, lines)
+    return lines.join('\n')
+  }
+  if (proto === 'shadowsocks') {
+    lines.push(`    type: ss`)
+    lines.push(`    cipher: ${yamlQuote(valueOr(node.ss_method, 'aes-256-gcm'))}`)
+    lines.push(`    password: ${yamlQuote(String(node.ss_password || ''))}`)
+    lines.push(`    udp: true`)
+    return lines.join('\n')
+  }
+  lines.push(`    type: vless`)
+  lines.push(`    uuid: ${yamlQuote(client.uuid)}`)
+  lines.push(`    network: ${yamlQuote(transport)}`)
+  lines.push(`    udp: true`)
+  clashProxyTail(node, security, transport, lines)
   return lines.join('\n')
 }
 
@@ -217,8 +338,79 @@ export function buildClashMetaConfig(nodes: any[], client: any, policy: any = {}
   ].join('\n')
 }
 
-function singBoxOutbound(node: any, client: any): any {
+function singBoxTLS(node: any, forceTLS = false): any | undefined {
+  const security = valueOr(node.security, 'none').toLowerCase()
+  const proto = String(node?.protocol || '').toLowerCase()
+  const needTLS = forceTLS || security === 'tls' || security === 'reality'
+  if (!needTLS) return undefined
+  const tls: any = {
+    enabled: true,
+    server_name: valueOr(node.sni, nodeHost(node)),
+    utls: { enabled: true, fingerprint: valueOr(node.fingerprint, 'chrome') },
+  }
+  if (security === 'reality') {
+    tls.reality = {
+      enabled: true,
+      public_key: node.reality_public_key || '',
+      short_id: node.reality_short_id || '',
+    }
+  }
+  return tls
+}
+
+function singBoxTransport(node: any): any | undefined {
   const transport = transportOf(node)
+  if (transport === 'ws') {
+    return { type: 'ws', path: valueOr(node.path, '/yuchen') }
+  }
+  if (transport === 'grpc') {
+    return { type: 'grpc', service_name: valueOr(String(node.path || '').replace(/^\/+/, ''), 'yuchen') }
+  }
+  return undefined
+}
+
+function singBoxOutbound(node: any, client: any): any {
+  const proto = String(node?.protocol || '').toLowerCase()
+  if (proto === 'vmess') {
+    const outbound: any = {
+      type: 'vmess',
+      tag: safeName(node),
+      server: nodeHost(node),
+      server_port: Number(node.port || 443),
+      uuid: String(client.uuid || ''),
+      security: 'auto',
+      packet_encoding: 'xudp',
+    }
+    const tls = singBoxTLS(node)
+    if (tls) outbound.tls = tls
+    const transport = singBoxTransport(node)
+    if (transport) outbound.transport = transport
+    return outbound
+  }
+  if (proto === 'trojan') {
+    const outbound: any = {
+      type: 'trojan',
+      tag: safeName(node),
+      server: nodeHost(node),
+      server_port: Number(node.port || 443),
+      password: String(client.password || client.uuid || ''),
+    }
+    const tls = singBoxTLS(node, true)
+    if (tls) outbound.tls = tls
+    const transport = singBoxTransport(node)
+    if (transport) outbound.transport = transport
+    return outbound
+  }
+  if (proto === 'shadowsocks') {
+    return {
+      type: 'shadowsocks',
+      tag: safeName(node),
+      server: nodeHost(node),
+      server_port: Number(node.port || 443),
+      method: valueOr(node.ss_method, 'aes-256-gcm'),
+      password: String(node.ss_password || ''),
+    }
+  }
   const outbound: any = {
     type: 'vless',
     tag: safeName(node),
@@ -227,26 +419,10 @@ function singBoxOutbound(node: any, client: any): any {
     uuid: client.uuid,
     packet_encoding: 'xudp',
   }
-  if (isReality(node) || String(node.security || '').toLowerCase() === 'tls') {
-    outbound.tls = {
-      enabled: true,
-      server_name: valueOr(node.sni, nodeHost(node)),
-      utls: { enabled: true, fingerprint: valueOr(node.fingerprint, 'chrome') },
-    }
-    if (isReality(node)) {
-      outbound.tls.reality = {
-        enabled: true,
-        public_key: node.reality_public_key || '',
-        short_id: node.reality_short_id || '',
-      }
-    }
-  }
-  if (transport === 'ws') {
-    outbound.transport = { type: 'ws', path: valueOr(node.path, '/yuchen') }
-  }
-  if (transport === 'grpc') {
-    outbound.transport = { type: 'grpc', service_name: valueOr(String(node.path || '').replace(/^\/+/, ''), 'yuchen') }
-  }
+  const tls = singBoxTLS(node)
+  if (tls) outbound.tls = tls
+  const transport = singBoxTransport(node)
+  if (transport) outbound.transport = transport
   return outbound
 }
 
@@ -280,17 +456,17 @@ export function buildSingBoxConfig(nodes: any[], client: any, policy: any = {}):
 }
 
 export function buildClientShare(node: any, client: any, format: ShareFormat, policy: any = {}): string {
-  if (format === 'shadowrocket') return buildVlessLink(node, client, 'shadowrocket')
+  if (format === 'shadowrocket') return buildNodeLink(node, client, 'shadowrocket')
   if (format === 'clash') return buildClashMetaConfig([node], client, policy)
   if (format === 'singbox') return buildSingBoxConfig([node], client, policy)
-  return buildVlessLink(node, client, 'v2rayn')
+  return buildNodeLink(node, client, 'v2rayn')
 }
 
 export function buildClientMultiShare(nodes: any[], client: any, format: ShareFormat, policy: any = {}): string {
   const clientNodes = nodes.filter(isClientShareNode)
   if (format === 'clash') return buildClashMetaConfig(clientNodes, client, policy)
   if (format === 'singbox') return buildSingBoxConfig(clientNodes, client, policy)
-  return clientNodes.map(n => buildVlessLink(n, client, format === 'shadowrocket' ? 'shadowrocket' : 'v2rayn')).join('\n')
+  return clientNodes.map(n => buildNodeLink(n, client, format === 'shadowrocket' ? 'shadowrocket' : 'v2rayn')).join('\n')
 }
 
 export function isQrShareFormat(format: ShareFormat): boolean {

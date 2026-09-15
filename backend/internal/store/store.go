@@ -380,6 +380,8 @@ func NewID(prefix string) string {
 	return fmt.Sprintf("%s_%d_%s", prefix, time.Now().UnixNano(), randHex(4))
 }
 func NewToken() string { return randHex(24) }
+// NewPassword 生成 24 位十六进制随机密码，用于 Trojan 客户凭据和 Shadowsocks 入站密码。
+func NewPassword() string { return randHex(12) }
 func NewUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
