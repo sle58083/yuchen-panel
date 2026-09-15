@@ -4,9 +4,9 @@
   "codename": "stable",
   "package": "yuchen-panel-v1.0.0-stable.zip",
   "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.0/yuchen-panel-v1.0.0-stable.zip",
-  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "sha256": "7104ef9fd6e30332d991fa165284102474fe2c77f2d9d378520bc31b7bb3d976",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-09-16T00:00:00Z",
+  "released_at": "2026-09-15T16:43:45Z",
   "changelog": [
     "项目由 ZXY Panel 正式更名为 Yuchen Panel，品牌标识改为 YC",
     "统一名称：命令行、安装目录、systemd 服务、环境变量前缀（ZXY_ → YC_）",
