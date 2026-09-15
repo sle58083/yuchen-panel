@@ -1,0 +1,131 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF#refs/tags/v}"
+          else
+            V="$(cut -d- -f1 VERSION)"
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "pkg=yuchen-panel-v${V}-stable.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build backend API
+        working-directory: backend
+        run: |
+          go test ./...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o ../bin/yuchen-panel-api-linux-amd64 ./cmd/server
+
+      - name: Build agent
+        working-directory: agent
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o ../bin/yuchen-agent-linux-amd64 ./cmd/agent
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund --progress=false
+          VITE_BASE_PATH=/ npm run build
+
+      - name: Package release zip
+        run: |
+          PKG_ROOT_NAME="yuchen-panel-v${{ steps.ver.outputs.version }}-stable"
+          STAGE="$(mktemp -d)"
+          mkdir -p "${STAGE}/${PKG_ROOT_NAME}"
+          rsync -a \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'dist-release' \
+            --exclude 'releases' \
+            --exclude 'data' \
+            --exclude 'version.json' \
+            --exclude '*.zip' \
+            --exclude '*.log' \
+            --exclude 'frontend/node_modules' \
+            --exclude 'backend/tmp' \
+            --exclude 'agent/tmp' \
+            --exclude '*.tsbuildinfo' \
+            ./ "${STAGE}/${PKG_ROOT_NAME}/"
+          test -x "${STAGE}/${PKG_ROOT_NAME}/bin/yuchen-panel-api-linux-amd64"
+          test -x "${STAGE}/${PKG_ROOT_NAME}/bin/yuchen-agent-linux-amd64"
+          test -f "${STAGE}/${PKG_ROOT_NAME}/frontend/dist/index.html"
+          (cd "${STAGE}" && zip -q -r -9 "${GITHUB_WORKSPACE}/${{ steps.ver.outputs.pkg }}" "${PKG_ROOT_NAME}")
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          SHA="$(sha256sum "${{ steps.ver.outputs.pkg }}" | awk '{print $1}')"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version.json on main
+        run: |
+          SHA="${{ steps.sha.outputs.sha }}"
+          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq --arg sha "${SHA}" --arg ts "${TS}" '.sha256 = $sha | .released_at = $ts' version.json > version.json.tmp
+          mv version.json.tmp version.json
+          cat version.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          if git diff --cached --quiet; then
+            echo "version.json unchanged, skip push"
+          else
+            git commit -m "release: update version.json sha256 for v${{ steps.ver.outputs.version }}"
+            git push origin HEAD:main
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          TAG="v${V}"
+          PKG="${{ steps.ver.outputs.pkg }}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" "${PKG}" --clobber
+          else
+            gh release create "${TAG}" "${PKG}" \
+              --title "Yuchen Panel v${V}" \
+              --notes "Yuchen Panel v${V} 自动构建发布包。
+
+          安装命令：
+          \`\`\`bash
+          bash <(curl -Ls https://raw.githubusercontent.com/sle58083/yuchen-panel/main/install.sh)
+          \`\`\`" \
+              --latest
+          fi

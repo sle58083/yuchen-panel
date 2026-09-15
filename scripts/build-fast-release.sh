@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${1:-0.7.7.5}"
-CODENAME="${2:-stability-polish}"
+VERSION="${1:-1.0.0}"
+CODENAME="${2:-stable}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/dist-release"
 PKG_NAME="yuchen-panel-v${VERSION}-${CODENAME}.zip"

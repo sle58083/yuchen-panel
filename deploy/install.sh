@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.7.7.1-clash-import-polish-agent-xray"
+VERSION="1.0.0-stable"
 APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}
 INFO_FILE="$CONFIG_DIR/panel.info"

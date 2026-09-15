@@ -1,18 +1,17 @@
 {
-  "latest": "0.7.7.5-stability-polish-agent-xray",
-  "version": "0.7.7.5",
-  "codename": "stability-polish",
-  "package": "yuchen-panel-v0.7.7.5-stability-polish.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v0.7.7.5/yuchen-panel-v0.7.7.5-stability-polish.zip",
-  "sha256": "f7f013f8b5a89f706c4008b84f75a8c0563e63cb71b52adbb217d00ac1b7a2f8",
+  "latest": "1.0.0-stable",
+  "version": "1.0.0",
+  "codename": "stable",
+  "package": "yuchen-panel-v1.0.0-stable.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.0/yuchen-panel-v1.0.0-stable.zip",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-07-03T15:30:00Z",
+  "released_at": "2026-09-16T00:00:00Z",
   "changelog": [
-    "统一 README、CHANGELOG、构建脚本、前端文案、后端版本、Agent 版本和安装脚本版本",
-    "Release 包不再内置带 SHA256 的 version.json，避免发布包内部 manifest 与外部 release manifest hash 不一致",
-    "Fresh install 没有备份、尚未创建客户绑定时，doctor 改为 INFO 提示，不再误报 warning",
-    "客户分享弹窗补充 Clash Verge / Mihomo 使用提示：订阅源端口不是节点端口，导入后需选择节点，内核通信错误需重启内核或客户端",
-    "Clash YAML 顶部增加客户端使用说明，减少导入成功但当前节点为空的误判",
-    "保留 V0.7.7.3 Clash/Mihomo 订阅绑定修复和 V0.7.7.2 BindingCheck、Agent apply 校验、Doctor 深度检测"
+    "项目由 ZXY Panel 正式更名为 Yuchen Panel，品牌标识改为 YC",
+    "统一名称：命令行、安装目录、systemd 服务、环境变量前缀（ZXY_ → YC_）",
+    "Go module 路径更新为 yuchen-panel/backend 与 yuchen-panel/agent",
+    "前端界面美化：主题配色升级为靛蓝紫 + 青色渐变，新增 YC favicon",
+    "新增 GitHub Actions 自动构建发布流水线"
   ]
 }
