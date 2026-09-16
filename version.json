@@ -4,9 +4,9 @@
   "codename": "stable",
   "package": "yuchen-panel-v1.0.2-stable.zip",
   "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.2/yuchen-panel-v1.0.2-stable.zip",
-  "sha256": "PENDING_CI_UPDATE",
+  "sha256": "7b64a19b908f7485b26858ad80340f2af6333605e2223fadb85c497d195602ea",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-09-16T09:00:00Z",
+  "released_at": "2026-09-16T09:57:00Z",
   "changelog": [
     "修复：VMess/Shadowsocks 入站测试超时（-1）的问题",
     "原因：切到高级模板时安全方式未重置，导致 VMess/SS 带上了不支持的 Reality 流控",
