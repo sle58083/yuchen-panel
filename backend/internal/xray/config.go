@@ -63,6 +63,15 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 		}
 
 		boundClients := makeInboundClients(clients, node.ID, node.Protocol)
+		// 协议与传输/安全方式的兼容性纠正：SS 自带加密强制 tcp+none；VMess 不支持 Reality。
+		transport := node.Transport
+		security := node.Security
+		if strings.ToLower(node.Protocol) == "shadowsocks" {
+			transport = "tcp"
+			security = "none"
+		} else if strings.ToLower(node.Protocol) == "vmess" && strings.EqualFold(security, "reality") {
+			security = "none"
+		}
 		settings := map[string]any{}
 		switch strings.ToLower(node.Protocol) {
 		case "shadowsocks":
@@ -89,11 +98,11 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 				"destOverride": []any{"http", "tls", "quic"},
 				"routeOnly":    false,
 			},
-			"streamSettings": map[string]any{"network": node.Transport, "security": node.Security},
+			"streamSettings": map[string]any{"network": transport, "security": security},
 			"tag":            node.ID,
 		}
 		s := inbound["streamSettings"].(map[string]any)
-		switch node.Transport {
+		switch transport {
 		case "ws":
 			s["wsSettings"] = map[string]any{"path": node.Path}
 		case "grpc":
@@ -103,10 +112,10 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 			}
 			s["grpcSettings"] = map[string]any{"serviceName": trimSlash(serviceName)}
 		}
-		if node.Security == "tls" {
+		if security == "tls" {
 			s["tlsSettings"] = map[string]any{"serverName": node.SNI}
 		}
-		if node.Security == "reality" {
+		if security == "reality" {
 			applyRealitySettings(s, node.RealityDest, node.SNI, node.RealityPrivateKey, node.RealityShortID, node.RealitySpiderX)
 		}
 		inbounds = append(inbounds, inbound)

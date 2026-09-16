@@ -1,17 +1,17 @@
 {
-  "latest": "1.0.1-stable",
-  "version": "1.0.1",
+  "latest": "1.0.2-stable",
+  "version": "1.0.2",
   "codename": "stable",
-  "package": "yuchen-panel-v1.0.1-stable.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.1/yuchen-panel-v1.0.1-stable.zip",
-  "sha256": "230da902bdf030d072c5064f476b9a8b3e5069ecc7b7899a0c69ac45eadcb3f8",
+  "package": "yuchen-panel-v1.0.2-stable.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.2/yuchen-panel-v1.0.2-stable.zip",
+  "sha256": "PENDING_CI_UPDATE",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-09-15T17:29:59Z",
+  "released_at": "2026-09-16T09:00:00Z",
   "changelog": [
-    "客户管理多协议支持：VMess/Trojan/Shadowsocks 入站可绑定客户并从订阅导出",
-    "订阅导出生成正确的 vmess://（base64 JSON）、trojan://、ss://（SIP002）分享链接",
-    "Xray 服务端按协议生成正确的 clients/settings（VMess alterId 0、Trojan password、SS method+password）",
-    "入站管理高级模板支持配置 Shadowsocks 加密方式和密码，客户编辑不再意外轮换凭据",
-    "Clash Meta / sing-box 导出同步支持多协议"
+    "修复：VMess/Shadowsocks 入站测试超时（-1）的问题",
+    "原因：切到高级模板时安全方式未重置，导致 VMess/SS 带上了不支持的 Reality 流控",
+    "修复：前端按协议限制安全方式/传输方式选项，并自动纠正",
+    "修复：后端创建/更新入站时按协议强制纠正 security/transport",
+    "修复：Xray 配置生成时对 SS 强制 tcp+none、对 VMess 的 reality 强制降级"
   ]
 }

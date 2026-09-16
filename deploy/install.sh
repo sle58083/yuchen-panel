@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.1-stable"
+VERSION="1.0.2-stable"
 APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}
 INFO_FILE="$CONFIG_DIR/panel.info"

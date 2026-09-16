@@ -229,6 +229,17 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 	if n.Security == "" {
 		n.Security = "none"
 	}
+	// 协议与安全方式/传输方式的兼容性约束：
+	// Shadowsocks 自带加密，Reality/TLS 不适用，传输强制 tcp；VMess 不支持 Reality。
+	switch n.Protocol {
+	case "shadowsocks":
+		n.Transport = "tcp"
+		n.Security = "none"
+	case "vmess":
+		if n.Security == "reality" {
+			n.Security = "none"
+		}
+	}
 	if n.Host == "" {
 		if srv.Host != "" {
 			n.Host = srv.Host

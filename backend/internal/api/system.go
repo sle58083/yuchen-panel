@@ -14,7 +14,7 @@ import (
 	"yuchen-panel/backend/internal/xray"
 )
 
-const panelVersion = "1.0.1-stable"
+const panelVersion = "1.0.2-stable"
 const installDir = "/opt/yuchen-panel"
 
 type systemCheck struct {

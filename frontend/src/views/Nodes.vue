@@ -85,6 +85,14 @@ function fillFromServer() {
 watch(() => form.value.server_id, fillFromServer)
 watch(() => form.value.protocol, () => {
   if (form.value.protocol === 'socks') applySocks5(false)
+  // 协议与安全方式的兼容性：SS 自带加密强制 tcp+none；VMess 不支持 Reality。
+  if (form.value.protocol === 'shadowsocks') {
+    form.value.transport = 'tcp'
+    form.value.security = 'none'
+  }
+  if (form.value.protocol === 'vmess' && form.value.security === 'reality') {
+    form.value.security = 'none'
+  }
 })
 watch(() => form.value.security, () => {
   if (form.value.security === 'none') form.value.sni = ''
@@ -384,8 +392,8 @@ onMounted(load)
       <label class="field"><span>入站域名 / Host</span><input v-model="form.host" placeholder="服务器公网 IP 或域名" /></label>
       <label class="field"><span>端口</span><input v-model.number="form.port" placeholder="例如 25642" /><em v-if="Number(form.port) && Number(form.port) < 10000" class="field-tip danger-tip">当前端口低于 10000，部分服务器外部不可达，建议改为 10000-60000。</em><em v-else class="field-tip">推荐 10000-60000；创建后用该端口生成客户端链接。</em></label>
       <label class="field"><span>协议</span><select v-model="form.protocol"><option value="vless">VLESS</option><option value="socks">SOCKS5</option><option v-if="mode==='advanced'" value="vmess">VMess</option><option v-if="mode==='advanced'" value="trojan">Trojan</option><option v-if="mode==='advanced'" value="shadowsocks">Shadowsocks</option></select><em class="field-tip">协议决定入站类型；SOCKS5 主要用于落地出口。</em></label>
-      <label class="field"><span>传输方式</span><select v-model="form.transport" :disabled="mode==='recommended' || form.protocol==='socks'"><option>tcp</option><option v-if="mode==='advanced'">ws</option><option v-if="mode==='advanced'">grpc</option></select></label>
-      <label class="field"><span>安全方式</span><select v-model="form.security" :disabled="mode==='recommended' || form.protocol==='socks'"><option>none</option><option v-if="mode==='advanced'">tls</option><option>reality</option></select></label>
+      <label class="field"><span>传输方式</span><select v-model="form.transport" :disabled="mode==='recommended' || form.protocol==='socks' || form.protocol==='shadowsocks'"><option>tcp</option><option v-if="mode==='advanced' && form.protocol!=='shadowsocks'">ws</option><option v-if="mode==='advanced' && form.protocol!=='shadowsocks'">grpc</option></select></label>
+      <label class="field"><span>安全方式</span><select v-model="form.security" :disabled="mode==='recommended' || form.protocol==='socks' || form.protocol==='shadowsocks'"><option>none</option><option v-if="mode==='advanced' && form.protocol!=='shadowsocks'">tls</option><option v-if="form.protocol==='vless' || form.protocol==='trojan'">reality</option></select><em v-if="form.protocol==='shadowsocks'" class="field-tip">Shadowsocks 自带加密，无需额外 TLS/Reality。</em></label>
       <label class="field" v-if="form.protocol !== 'socks' && form.transport !== 'tcp'"><span>{{ form.transport === 'grpc' ? '服务名称' : '路径' }}</span><input v-model="form.path" /></label>
       <label class="field" v-else><span>路径</span><input :value="form.protocol === 'socks' ? 'SOCKS5 不需要填写路径' : 'TCP 模式不需要填写路径'" disabled /></label>
       <label class="field wide"><span>备注</span><input v-model="form.remark" placeholder="例如：正式客户 / TikTok 专线 / AI 工具" /></label>

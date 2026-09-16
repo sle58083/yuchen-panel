@@ -1,1 +1,1 @@
-export const APP_VERSION = 'Yuchen Panel V1.0.1'
+export const APP_VERSION = 'Yuchen Panel V1.0.2'
