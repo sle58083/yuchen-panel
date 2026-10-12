@@ -520,6 +520,10 @@ print_result() {
   echo "InstallMode: ${INSTALL_MODE}"
   echo "Database:    JSON (${APP_DIR}/data/yuchen-panel.json)"
   echo "Access URL:  http://${PUBLIC_IP}:${PANEL_PORT}/${WEB_BASE_PATH}/"
+  echo "⚠️ 当前为 HTTP 明文访问，凭据可被中间人读取。强烈建议立即用 SSH 隧道："
+  echo "  ssh -N -L ${PANEL_PORT}:127.0.0.1:${PANEL_PORT} root@${PUBLIC_IP}"
+  echo "  然后浏览器打开 http://127.0.0.1:${PANEL_PORT}/${WEB_BASE_PATH}/"
+  echo "如已购买域名，可配置 Let's Encrypt 证书启用 HTTPS。远程 Agent 必须使用 HTTPS；本机 loopback 不受影响。"
   echo "API Token:   ${AGENT_SECRET}"
   echo
   echo "Info saved:  ${INFO_FILE}"

@@ -1,0 +1,10 @@
+✔ empty, disabled, expired and fixed-exit clients have no ordinary node grant (3.290401ms)
+✔ retired protocols cannot be shared in any format (1.312301ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 540.334651

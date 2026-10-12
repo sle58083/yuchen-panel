@@ -1,0 +1,2 @@
+COMMAND: shellcheck --severity=error <six scripts>
+EXIT_CODE: 0

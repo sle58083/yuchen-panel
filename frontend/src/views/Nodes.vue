@@ -58,8 +58,6 @@ const emptyForm = () => ({
   socks_username: 'yuchen',
   socks_password: '',
   socks_udp: false,
-  ss_method: 'aes-256-gcm',
-  ss_password: '',
   remark: '',
   enabled: true,
 })
@@ -85,11 +83,7 @@ function fillFromServer() {
 watch(() => form.value.server_id, fillFromServer)
 watch(() => form.value.protocol, () => {
   if (form.value.protocol === 'socks') applySocks5(false)
-  // 协议与安全方式的兼容性：SS 自带加密强制 tcp+none；VMess 不支持 Reality。
-  if (form.value.protocol === 'shadowsocks') {
-    form.value.transport = 'tcp'
-    form.value.security = 'none'
-  }
+  // VMess 不支持 Reality。
   if (form.value.protocol === 'vmess' && form.value.security === 'reality') {
     form.value.security = 'none'
   }
@@ -249,8 +243,6 @@ function editNode(n:any) {
     socks_username: n.socks_username || 'yuchen',
     socks_password: n.socks_password || '',
     socks_udp: n.socks_udp === true,
-    ss_method: n.ss_method || 'aes-256-gcm',
-    ss_password: n.ss_password || '',
     remark: n.remark || '',
     enabled: n.enabled !== false,
   }
@@ -346,6 +338,10 @@ onMounted(load)
   <div class="notice ok">新增入站默认绑定选中的服务器。客户节点建议使用 VLESS Reality；落地出口可创建 SOCKS5 入站，供后续中转服务器连接。</div>
   <div class="notice warn">部分服务器商或机房会限制 10000 以下低端口外部访问。Xray 即使显示已监听，客户端也可能连不上；建议新节点统一使用 10000-60000。</div>
 
+  <div v-if="nodes.some(n => String(n.protocol).toLowerCase() === 'shadowsocks')" class="notice warn">
+    该节点为 Shadowsocks 协议，面板已停止下发，请改用 VLESS/Reality 后重新配置。
+  </div>
+
   <div class="panel node-list-panel">
     <div class="section-head">
       <div><h2>入站列表</h2><p>先看已有入站，新增或编辑时再展开配置表单，避免创建后找不到结果。</p></div>
@@ -391,9 +387,9 @@ onMounted(load)
       <label class="field"><span>入站名称</span><input v-model="form.name" placeholder="例如：美国01 Reality" /></label>
       <label class="field"><span>入站域名 / Host</span><input v-model="form.host" placeholder="服务器公网 IP 或域名" /></label>
       <label class="field"><span>端口</span><input v-model.number="form.port" placeholder="例如 25642" /><em v-if="Number(form.port) && Number(form.port) < 10000" class="field-tip danger-tip">当前端口低于 10000，部分服务器外部不可达，建议改为 10000-60000。</em><em v-else class="field-tip">推荐 10000-60000；创建后用该端口生成客户端链接。</em></label>
-      <label class="field"><span>协议</span><select v-model="form.protocol"><option value="vless">VLESS</option><option value="socks">SOCKS5</option><option v-if="mode==='advanced'" value="vmess">VMess</option><option v-if="mode==='advanced'" value="trojan">Trojan</option><option v-if="mode==='advanced'" value="shadowsocks">Shadowsocks</option></select><em class="field-tip">协议决定入站类型；SOCKS5 主要用于落地出口。</em></label>
-      <label class="field"><span>传输方式</span><select v-model="form.transport" :disabled="mode==='recommended' || form.protocol==='socks' || form.protocol==='shadowsocks'"><option>tcp</option><option v-if="mode==='advanced' && form.protocol!=='shadowsocks'">ws</option><option v-if="mode==='advanced' && form.protocol!=='shadowsocks'">grpc</option></select></label>
-      <label class="field"><span>安全方式</span><select v-model="form.security" :disabled="mode==='recommended' || form.protocol==='socks' || form.protocol==='shadowsocks'"><option>none</option><option v-if="mode==='advanced' && form.protocol!=='shadowsocks'">tls</option><option v-if="form.protocol==='vless' || form.protocol==='trojan'">reality</option></select><em v-if="form.protocol==='shadowsocks'" class="field-tip">Shadowsocks 自带加密，无需额外 TLS/Reality。</em></label>
+      <label class="field"><span>协议</span><select v-model="form.protocol"><option value="vless">VLESS</option><option value="socks">SOCKS5</option><option v-if="mode==='advanced'" value="vmess">VMess</option><option v-if="mode==='advanced'" value="trojan">Trojan</option></select><em class="field-tip">协议决定入站类型；SOCKS5 主要用于落地出口。</em></label>
+      <label class="field"><span>传输方式</span><select v-model="form.transport" :disabled="mode==='recommended' || form.protocol==='socks'"><option>tcp</option><option v-if="mode==='advanced'">ws</option><option v-if="mode==='advanced'">grpc</option></select></label>
+      <label class="field"><span>安全方式</span><select v-model="form.security" :disabled="mode==='recommended' || form.protocol==='socks'"><option>none</option><option v-if="mode==='advanced'">tls</option><option v-if="form.protocol==='vless' || form.protocol==='trojan'">reality</option></select></label>
       <label class="field" v-if="form.protocol !== 'socks' && form.transport !== 'tcp'"><span>{{ form.transport === 'grpc' ? '服务名称' : '路径' }}</span><input v-model="form.path" /></label>
       <label class="field" v-else><span>路径</span><input :value="form.protocol === 'socks' ? 'SOCKS5 不需要填写路径' : 'TCP 模式不需要填写路径'" disabled /></label>
       <label class="field wide"><span>备注</span><input v-model="form.remark" placeholder="例如：正式客户 / TikTok 专线 / AI 工具" /></label>
@@ -410,17 +406,6 @@ onMounted(load)
         <label class="field"><span>SOCKS5 密码</span><input v-model="form.socks_password" placeholder="自动生成或手动填写" /></label>
         <label class="field"><span>UDP 转发</span><select v-model="form.socks_udp"><option :value="false">关闭 UDP（推荐先测 TCP）</option><option :value="true">开启 UDP（实验）</option></select><em class="field-tip">当前只是 SOCKS5 入站 UDP 开关，不等于 VLESS Reality 原生 UDP。</em></label>
         <label class="field wide"><span>给中转服务器填写</span><input :value="`${form.host || '落地IP'}:${form.port} / ${form.socks_username} / ${form.socks_password}`" readonly /></label>
-      </div>
-    </div>
-
-    <div v-if="form.protocol === 'shadowsocks'" class="reality-box">
-      <div class="row-between">
-        <div><h2>Shadowsocks 凭据</h2><p class="page-desc">Xray 的 SS 入站是单用户凭据：加密方式和密码保存在入站上，客户订阅会自动带上这组凭据。</p></div>
-        <button class="btn secondary" @click="form.ss_password = randomPassword(22)">重新生成密码</button>
-      </div>
-      <div class="form node-form clean-form reality-form">
-        <label class="field"><span>加密方式</span><select v-model="form.ss_method"><option>aes-256-gcm</option><option>chacha20-poly1305</option><option>aes-128-gcm</option><option>2022-blake3-aes-256-gcm</option><option>2022-blake3-chacha20-poly1305</option></select><em class="field-tip">aes-256-gcm 兼容性最好；2022 系列需要客户端同步支持。</em></label>
-        <label class="field"><span>密码</span><input v-model="form.ss_password" placeholder="留空保存时自动生成" /></label>
       </div>
     </div>
 

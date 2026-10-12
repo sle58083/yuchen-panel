@@ -74,15 +74,13 @@ export function buildShortNodeUrl(client: any, node: any): string {
 
 export function clientCanUseNode(client: any, node: any): boolean {
   const ids = Array.isArray(client?.node_ids) ? client.node_ids : []
-  const relayIds = Array.isArray(client?.relay_route_ids) ? client.relay_route_ids : []
-  // 固定出口客户如果没有显式绑定普通入站，不再回退到所有普通 VLESS 入站。
-  // 这能避免客户分享时错误复制普通入站，导致出口变成中转服务器 IP。
-  if (ids.length === 0 && relayIds.length > 0) return false
-  return ids.length === 0 || ids.includes(node.id)
+  if (client?.enabled === false) return false
+  if (client?.expire_at && new Date(client.expire_at).getTime() <= Date.now()) return false
+  return ids.includes(node.id)
 }
 
 // 客户可分享的入站协议：SOCKS5 / dokodemo-door 属于内部链路，不生成客户订阅。
-const SHAREABLE_PROTOCOLS = ['vless', 'vmess', 'trojan', 'shadowsocks']
+const SHAREABLE_PROTOCOLS = ['vless', 'vmess', 'trojan']
 
 export function isClientShareNode(node: any): boolean {
   return SHAREABLE_PROTOCOLS.includes(String(node?.protocol || '').toLowerCase())
@@ -128,10 +126,6 @@ function utf8ToBase64(s: string): string {
   let bin = ''
   bytes.forEach(b => { bin += String.fromCharCode(b) })
   return btoa(bin)
-}
-
-function utf8ToBase64Url(s: string): string {
-  return utf8ToBase64(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shadowrocket' = 'v2rayn'): string {
@@ -216,21 +210,12 @@ export function buildTrojanLink(node: any, client: any): string {
   return `trojan://${password}@${host}:${port}?${q.toString()}#${label}`
 }
 
-// buildSSLink 生成 SIP002 ss:// 链接。SS 凭据保存在入站上（Xray SS 入站为单用户）。
-export function buildSSLink(node: any): string {
-  const method = valueOr(node.ss_method, 'aes-256-gcm')
-  const password = String(node.ss_password || '')
-  const userInfo = utf8ToBase64Url(`${method}:${password}`)
-  const label = encodeURIComponent(nodeName(node))
-  return `ss://${userInfo}@${nodeHost(node)}:${Number(node.port || 443)}#${label}`
-}
-
 // buildNodeLink 按入站协议生成对应客户端分享链接。
 export function buildNodeLink(node: any, client: any, format: 'v2rayn' | 'shadowrocket' = 'v2rayn'): string {
+  if (!isClientShareNode(node)) throw new Error('该协议已停用或不支持分享')
   const proto = String(node?.protocol || '').toLowerCase()
   if (proto === 'vmess') return buildVmessLink(node, client)
   if (proto === 'trojan') return buildTrojanLink(node, client)
-  if (proto === 'shadowsocks') return buildSSLink(node)
   return buildVlessLink(node, client, format)
 }
 
@@ -288,13 +273,6 @@ function clashProxy(node: any, client: any): string {
     clashProxyTail(node, security === 'reality' ? 'reality' : 'tls', transport, lines)
     return lines.join('\n')
   }
-  if (proto === 'shadowsocks') {
-    lines.push(`    type: ss`)
-    lines.push(`    cipher: ${yamlQuote(valueOr(node.ss_method, 'aes-256-gcm'))}`)
-    lines.push(`    password: ${yamlQuote(String(node.ss_password || ''))}`)
-    lines.push(`    udp: true`)
-    return lines.join('\n')
-  }
   lines.push(`    type: vless`)
   lines.push(`    uuid: ${yamlQuote(client.uuid)}`)
   lines.push(`    network: ${yamlQuote(transport)}`)
@@ -304,7 +282,7 @@ function clashProxy(node: any, client: any): string {
 }
 
 export function buildClashMetaConfig(nodes: any[], client: any, policy: any = {}): string {
-  const enabled = nodes.filter(Boolean)
+  const enabled = nodes.filter(n => n && n.enabled !== false && isClientShareNode(n))
   const names = enabled.map(n => safeName(n))
   const proxyList = enabled.map(n => clashProxy(n, client)).join('\n')
   const groupProxies = names.length ? [...names.map(n => `      - ${yamlQuote(n)}`), '      - DIRECT'].join('\n') : '      - DIRECT'
@@ -401,16 +379,6 @@ function singBoxOutbound(node: any, client: any): any {
     if (transport) outbound.transport = transport
     return outbound
   }
-  if (proto === 'shadowsocks') {
-    return {
-      type: 'shadowsocks',
-      tag: safeName(node),
-      server: nodeHost(node),
-      server_port: Number(node.port || 443),
-      method: valueOr(node.ss_method, 'aes-256-gcm'),
-      password: String(node.ss_password || ''),
-    }
-  }
   const outbound: any = {
     type: 'vless',
     tag: safeName(node),
@@ -427,7 +395,7 @@ function singBoxOutbound(node: any, client: any): any {
 }
 
 export function buildSingBoxConfig(nodes: any[], client: any, policy: any = {}): string {
-  const enabled = nodes.filter(Boolean)
+  const enabled = nodes.filter(n => n && n.enabled !== false && isClientShareNode(n))
   const outbounds = enabled.map(n => singBoxOutbound(n, client))
   const selector = {
     type: 'selector',
@@ -456,6 +424,7 @@ export function buildSingBoxConfig(nodes: any[], client: any, policy: any = {}):
 }
 
 export function buildClientShare(node: any, client: any, format: ShareFormat, policy: any = {}): string {
+  if (!isClientShareNode(node)) throw new Error('该协议已停用或不支持分享')
   if (format === 'shadowrocket') return buildNodeLink(node, client, 'shadowrocket')
   if (format === 'clash') return buildClashMetaConfig([node], client, policy)
   if (format === 'singbox') return buildSingBoxConfig([node], client, policy)

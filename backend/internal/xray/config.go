@@ -35,6 +35,10 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 		if !node.Enabled {
 			continue
 		}
+		// Retired Shadowsocks nodes remain in the database for migration only.
+		if strings.EqualFold(strings.TrimSpace(node.Protocol), "shadowsocks") {
+			continue
+		}
 		if node.Protocol == "socks" {
 			auth := "password"
 			accounts := []any{map[string]any{"user": node.SocksUsername, "pass": node.SocksPassword}}
@@ -63,23 +67,14 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 		}
 
 		boundClients := makeInboundClients(clients, node.ID, node.Protocol)
-		// 协议与传输/安全方式的兼容性纠正：SS 自带加密强制 tcp+none；VMess 不支持 Reality。
+		// VMess cannot use Reality.
 		transport := node.Transport
 		security := node.Security
-		if strings.ToLower(node.Protocol) == "shadowsocks" {
-			transport = "tcp"
-			security = "none"
-		} else if strings.ToLower(node.Protocol) == "vmess" && strings.EqualFold(security, "reality") {
+		if strings.EqualFold(node.Protocol, "vmess") && strings.EqualFold(security, "reality") {
 			security = "none"
 		}
 		settings := map[string]any{}
 		switch strings.ToLower(node.Protocol) {
-		case "shadowsocks":
-			// Xray SS 入站是单用户凭据：method + password 直接放在 settings 上。
-			method, password := SSCredentials(node)
-			settings["method"] = method
-			settings["password"] = password
-			settings["network"] = "tcp,udp"
 		case "vmess":
 			settings["clients"] = boundClients
 		case "trojan":
@@ -274,8 +269,7 @@ func makeInboundClients(clients []model.Client, nodeID string, protocol string) 
 		if !c.Enabled || (!c.ExpireAt.IsZero() && c.ExpireAt.Before(time.Now())) {
 			continue
 		}
-		// nodeID 为空时用于中转线路：中转节点是虚拟线路，不写入客户 NodeIDs，所有有效客户都可用于复制中转链接。
-		if nodeID != "" && len(c.NodeIDs) > 0 && !contains(c.NodeIDs, nodeID) {
+		if !model.AllowedNodes(c)[nodeID] {
 			continue
 		}
 		email := c.Username

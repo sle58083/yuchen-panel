@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +79,9 @@ func main() {
 		log.Fatal("YC_SERVER_ID and YC_AGENT_TOKEN are required")
 	}
 	hostname, _ := os.Hostname()
+	if _, err := validatePanelURL(cfg.PanelBase); err != nil {
+		log.Fatal(err)
+	}
 	lastMessage := "agent started"
 	log.Printf("Yuchen Agent %s started, panel=%s, server_id=%s, config=%s", version, cfg.PanelBase, cfg.ServerID, cfg.ConfigPath)
 	for {
@@ -129,13 +134,22 @@ func heartbeat(cfg Config, hb Heartbeat) error {
 }
 
 func postJSON(url, token string, payload []byte, out any) error {
+	origin, err := validatePanelURL(url)
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Agent-Token", token)
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(next *http.Request, via []*http.Request) error {
+		if len(via) > 5 || next.URL.Scheme != origin.Scheme || !strings.EqualFold(next.URL.Host, origin.Host) || next.URL.User != nil {
+			return fmt.Errorf("agent redirects must stay on the original origin")
+		}
+		return nil
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -151,6 +165,22 @@ func postJSON(url, token string, payload []byte, out any) error {
 		}
 	}
 	return nil
+}
+
+// validatePanelURL permits cleartext only for literal loopback addresses.
+func validatePanelURL(raw string) (*neturl.URL, error) {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.User != nil {
+		return nil, fmt.Errorf("invalid panel URL")
+	}
+	if u.Scheme == "https" {
+		return u, nil
+	}
+	ip := net.ParseIP(u.Hostname())
+	if u.Scheme == "http" && ip != nil && ip.IsLoopback() {
+		return u, nil
+	}
+	return nil, fmt.Errorf("remote agent panel URL must use HTTPS; HTTP is permitted only for loopback IPs")
 }
 
 func applyXrayConfig(cfg Config, syncResp SyncResponse) error {

@@ -2,6 +2,10 @@
 
 ## Unreleased — audit Batch 1
 
+- **C4 / P1-010, P1-011, breaking:** empty node bindings no longer grant every node. Rebind intended nodes explicitly; deleting the last node/relay authorization disables the affected client. Fixed-exit relay grants stay independent of ordinary node grants.
+- **Shadowsocks retired:** old records remain for migration, but no core config or subscription is emitted, new SS nodes are rejected, credentials generators and client export branches are removed, and the UI shows a migration banner. No existing SS consumers were reported by the operator.
+- C4 / P1-016 (partial): remote Agents require HTTPS and same-origin redirects; literal loopback HTTP remains available. Configure HTTPS before restarting a remote Agent. Without a domain, the panel installer retains HTTP and prints an SSH tunnel recommendation; panel TLS deployment remains deferred.
+
 - C3 / P1-001, P2-005: jq is now required by both installers. Manifest values and installation paths are validated, release extraction uses a new mktemp directory, and downloads reject non-HTTPS redirects. Custom manifests must use the documented version/package whitelist and valid string fields; extraction preserves existing release directories.
 
 - C2 / P1-008: upgrade runner assignments use checked Bash single-quoted literals and reject CR/LF/NUL. Package downloads permit only HTTPS redirects; manifest downloads permit at most five same-host HTTPS redirects. Configure an HTTPS manifest URL before upgrading; custom API health port handling remains tracked as P2-027.

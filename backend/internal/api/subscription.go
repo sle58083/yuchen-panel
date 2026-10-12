@@ -18,7 +18,7 @@ import (
 // SOCKS5 与 dokodemo-door 属于内部链路入站，不生成客户订阅。
 func isShareableNodeProtocol(p string) bool {
 	switch strings.ToLower(strings.TrimSpace(p)) {
-	case "vless", "vmess", "trojan", "shadowsocks":
+	case "vless", "vmess", "trojan":
 		return true
 	}
 	return false
@@ -63,20 +63,13 @@ func (r *Router) subscription(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "subscription expired or disabled", http.StatusForbidden)
 		return
 	}
-	allowed := map[string]bool{}
-	for _, id := range client.NodeIDs {
-		allowed[id] = true
-	}
-	fixedExitOnly := len(client.RelayRouteIDs) > 0 && len(client.NodeIDs) == 0
+	allowed := model.AllowedNodes(client)
 	nodes := []model.Node{}
 	for _, n := range r.store.Data.Nodes {
 		if !n.Enabled {
 			continue
 		}
-		if fixedExitOnly {
-			continue
-		}
-		if len(allowed) > 0 && !allowed[n.ID] {
+		if !allowed[n.ID] {
 			continue
 		}
 		if !isShareableNodeProtocol(n.Protocol) {
@@ -143,22 +136,7 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	allowed := map[string]bool{}
-	for _, id := range client.NodeIDs {
-		allowed[id] = true
-	}
-	fixedExitOnly := len(client.RelayRouteIDs) > 0 && len(client.NodeIDs) == 0
-	if fixedExitOnly {
-		if _, ok := r.store.Data.RelayRoutes[nodeID]; !ok {
-			http.Error(w, "fixed-exit client cannot use normal node", http.StatusForbidden)
-			return
-		}
-	}
-	if len(allowed) > 0 && !allowed[nodeID] {
-		http.Error(w, "node not allowed", http.StatusForbidden)
-		return
-	}
-
+	allowed := model.AllowedNodes(client)
 	var node model.Node
 	foundNode := false
 	for _, n := range r.store.Data.Nodes {
@@ -169,6 +147,10 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if foundNode && node.Enabled && isShareableNodeProtocol(node.Protocol) {
+		if !allowed[node.ID] {
+			http.Error(w, "node not allowed", http.StatusForbidden)
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write([]byte(buildNodeShareLink(node, client)))
@@ -182,7 +164,7 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 				break
 			}
 		}
-		if !allowedRelay && len(client.RelayRouteIDs) > 0 {
+		if !allowedRelay {
 			http.Error(w, "relay not allowed", http.StatusForbidden)
 			return
 		}
@@ -316,15 +298,16 @@ func buildClashMetaSubscription(nodes []model.Node, relays []model.RelayRoute, c
 }
 
 // buildNodeShareLink 按入站协议生成对应的分享链接：
-// vless://、vmess://（base64 JSON）、trojan://、ss://（SIP002）。
+// vless://、vmess://（base64 JSON）、trojan://。
 func buildNodeShareLink(n model.Node, client model.Client) string {
+	if !isShareableNodeProtocol(n.Protocol) {
+		return ""
+	}
 	switch strings.ToLower(strings.TrimSpace(n.Protocol)) {
 	case "vmess":
 		return buildVmessShareLink(n, client)
 	case "trojan":
 		return buildTrojanShareLink(n, client)
-	case "shadowsocks":
-		return buildSSShareLink(n)
 	default:
 		return buildVlessShareLink(n, client)
 	}
@@ -459,16 +442,11 @@ func buildTrojanShareLink(n model.Node, client model.Client) string {
 	return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", xray.TrojanClientPassword(client), nodeHost(n), n.Port, q.Encode(), name)
 }
 
-// buildSSShareLink 生成 SIP002 ss:// 分享链接（base64url(method:password)@host:port）。
-func buildSSShareLink(n model.Node) string {
-	method, password := xray.SSCredentials(n)
-	userInfo := base64.RawURLEncoding.EncodeToString([]byte(method + ":" + password))
-	name := url.QueryEscape(nodeShareName(n))
-	return fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, nodeHost(n), n.Port, name)
-}
-
 // buildClashProxyLinesForNode 按协议生成 Clash Meta / Mihomo proxies 段。
 func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
+	if !isShareableNodeProtocol(n.Protocol) {
+		return nil
+	}
 	name := nodeShareName(n)
 	host := nodeHost(n)
 	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
@@ -505,17 +483,6 @@ func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
 		}
 		appendClashTransportAndTLS(&lines, trojanSecurity, transport, n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.Path)
 		return lines
-	case "shadowsocks":
-		method, password := xray.SSCredentials(n)
-		return []string{
-			fmt.Sprintf("  - name: %s", yamlQuote(name)),
-			"    type: ss",
-			fmt.Sprintf("    server: %s", yamlQuote(host)),
-			fmt.Sprintf("    port: %d", n.Port),
-			fmt.Sprintf("    cipher: %s", yamlQuote(method)),
-			fmt.Sprintf("    password: %s", yamlQuote(password)),
-			"    udp: true",
-		}
 	default:
 		return buildClashProxyLines(name, host, n.Port, client.UUID, n.Security, valueOr(n.Transport, "tcp"), n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.RealitySpiderX, n.Path)
 	}
