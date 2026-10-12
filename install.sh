@@ -75,6 +75,7 @@ install_dependencies() {
   command -v curl >/dev/null 2>&1 || missing+=(curl)
   command -v tar >/dev/null 2>&1 || missing+=(tar)
   command -v gzip >/dev/null 2>&1 || missing+=(gzip)
+  command -v python3 >/dev/null 2>&1 || missing+=(python3)
   if [ ! -f /etc/ssl/certs/ca-certificates.crt ]; then
     missing+=(ca-certificates)
   fi
@@ -100,6 +101,40 @@ install_dependencies() {
     return
   fi
   die "未找到支持的包管理器，请手动安装 unzip curl ca-certificates tar gzip"
+}
+
+preflight_existing_credentials() {
+  # Treat the existing .env as data; never source privileged configuration.
+  # Refresh weak historical signing keys before deploy stops the API.
+  python3 - /opt/yuchen-panel/.env <<'PY_CREDENTIALS'
+import os, secrets, sys, tempfile
+path = sys.argv[1]
+if not os.path.isfile(path):
+    sys.exit(0)
+with open(path, encoding='utf-8') as f:
+    lines = f.readlines()
+values = [line.partition('=')[2].strip().strip('\"\'') for line in lines
+          if line.startswith('YC_JWT_SECRET=')]
+weak = not values or any(len(value.strip()) < 32 or value in (
+    'dev-secret-change-me', 'change-me-please',
+    'please-change-this-secret-before-public-deploy') for value in values)
+if not weak:
+    sys.exit(0)
+new_lines = [line for line in lines if not line.startswith('YC_JWT_SECRET=')]
+new_lines.append('YC_JWT_SECRET=' + secrets.token_hex(32) + '\n')
+fd, temporary = tempfile.mkstemp(prefix='.jwt-preflight-', dir=os.path.dirname(path))
+try:
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.writelines(new_lines)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+print('Refreshed a weak historical JWT secret; existing login tokens will expire after restart.')
+PY_CREDENTIALS
 }
 
 json_value() {
@@ -270,6 +305,7 @@ main() {
   require_root
   detect_os
   install_dependencies
+  preflight_existing_credentials
   fetch_manifest
   download_release
   extract_release

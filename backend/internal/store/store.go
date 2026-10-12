@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,16 +113,12 @@ func normalize(d *model.PanelData) {
 	}
 	normalizeNetworkPolicy(&d.NetworkPolicy)
 	normalizeNetworkPolicy(&d.NetworkPolicyBackup)
-	// V0.4.1 修复：旧版本 AdminUser.PasswordHash 被 json:"-" 忽略，重启后会丢失密码哈希，导致 admin/admin123 无法登录。
-	// 如果发现管理员哈希为空，自动重置为默认密码 admin123，方便测试版升级恢复登录。
+	// Missing historical hashes are not recoverable credentials. Disable the
+	// account until the operator performs an explicit offline password reset.
 	for id, a := range d.Admins {
 		if a.PasswordHash == "" {
-			hash, err := security.HashPassword("admin123")
-			if err == nil {
-				a.PasswordHash = hash
-				a.Enabled = true
-				d.Admins[id] = a
-			}
+			a.Enabled = false
+			d.Admins[id] = a
 		}
 	}
 	d.Version = "0.7.7.1-clash-import-polish-agent-xray"
@@ -187,8 +184,11 @@ func (s *Store) SaveLocked() error {
 
 func (s *Store) seedDefaultAdmin() error {
 	now := time.Now()
-	username := getenv("YC_ADMIN_USERNAME", "admin")
-	password := getenv("YC_ADMIN_PASSWORD", "admin123")
+	username := strings.TrimSpace(os.Getenv("YC_ADMIN_USERNAME"))
+	password := os.Getenv("YC_ADMIN_PASSWORD")
+	if username == "" || len(password) < 12 || password == "admin123" || password == "change-me" {
+		return errors.New("initial administrator requires YC_ADMIN_USERNAME and YC_ADMIN_PASSWORD of at least 12 characters")
+	}
 	hash, err := security.HashPassword(password)
 	if err != nil {
 		return err
@@ -380,6 +380,7 @@ func NewID(prefix string) string {
 	return fmt.Sprintf("%s_%d_%s", prefix, time.Now().UnixNano(), randHex(4))
 }
 func NewToken() string { return randHex(24) }
+
 // NewPassword 生成 24 位十六进制随机密码，用于 Trojan 客户凭据和 Shadowsocks 入站密码。
 func NewPassword() string { return randHex(12) }
 func NewUUID() string {

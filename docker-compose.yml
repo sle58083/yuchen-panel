@@ -7,10 +7,10 @@ services:
       - "127.0.0.1:${API_PORT:-8088}:8088"
     environment:
       - YC_API_ADDR=0.0.0.0:8088
-      - YC_JWT_SECRET=${YC_JWT_SECRET:-change-me-please}
+      - YC_JWT_SECRET=${YC_JWT_SECRET:?Set YC_JWT_SECRET to a random secret of at least 32 characters}
       - YC_AGENT_SHARED_SECRET=${YC_AGENT_SHARED_SECRET:-change-agent-secret}
-      - YC_ADMIN_USERNAME=${YC_ADMIN_USERNAME:-admin}
-      - YC_ADMIN_PASSWORD=${YC_ADMIN_PASSWORD:-admin123}
+      - YC_ADMIN_USERNAME=${YC_ADMIN_USERNAME:?Set YC_ADMIN_USERNAME explicitly}
+      - YC_ADMIN_PASSWORD=${YC_ADMIN_PASSWORD:?Set YC_ADMIN_PASSWORD to a password of at least 12 characters}
       - YC_DB_PATH=/app/data/yuchen-panel.json
       - YC_LOCAL_SERVER_IP=${YC_LOCAL_SERVER_IP:-127.0.0.1}
       - YC_LOCAL_SERVER_HOST=${YC_LOCAL_SERVER_HOST:-127.0.0.1}
