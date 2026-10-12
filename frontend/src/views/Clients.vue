@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { copyText } from '../clipboard'
-import { buildClashDownloadUrl, buildClashSubscriptionUrl, buildClientMultiShare, buildShortNodeUrl, buildSubscriptionUrl, isClientShareNode, isQrShareFormat, nodesForClient, qrImageUrl, relayNodesForClient, shareFormatLabel, shareFormatOptions, type ShareFormat } from '../share'
+import { buildClashDownloadUrl, buildClashSubscriptionUrl, buildClientMultiShare, buildShortNodeUrl, buildSubscriptionUrl, isClientShareNode, isQrShareFormat, nodesForClient, qrImageUrl, relayNodesForClient, shareFormatLabel, shareFormatOptions, subscriptionFormatOptions, type SubscriptionFormat, type ShareFormat } from '../share'
 
 type ShareTab = ShareFormat | 'subscription'
 
@@ -18,6 +18,9 @@ const editingId = ref('')
 const detailClient = ref<any | null>(null)
 const shareClient = ref<any | null>(null)
 const shareTab = ref<ShareTab>('v2rayn')
+const subscriptionFormat = ref<SubscriptionFormat>('auto')
+const singBoxVPN = ref(false)
+const subscriptionTip = computed(() => subscriptionFormatOptions.find(x => x.value === subscriptionFormat.value)?.tip || '')
 const shareText = ref('')
 const shareLinks = ref<any[]>([])
 const qrZoomText = ref('')
@@ -147,7 +150,7 @@ function closeFixedClientModal() {
 async function createDirectClient() {
   error.value=''; message.value=''
   if (!String(directForm.value.username || '').trim()) { error.value='请填写客户名称。'; return }
-  if (!directForm.value.node_id) { error.value='请选择直连入站。请先到入站管理创建入站（VLESS/VMess/Trojan/Shadowsocks 均可）。'; return }
+  if (!directForm.value.node_id) { error.value='请选择直连入站。请先到入站管理创建入站（VLESS/VMess/Trojan 均可）。'; return }
   try {
     const body={
       username: directForm.value.username,
@@ -200,7 +203,7 @@ async function saveClient() {
 }
 async function remove(id:string) { if(!confirm('确认删除这个客户？')) return; await api(`/api/clients/${id}`,{method:'DELETE'}); await load() }
 async function reset(id:string) { if(!confirm('确认重置订阅？旧订阅链接会失效。')) return; await api(`/api/clients/${id}/reset-token`,{method:'POST'}); await load() }
-function subUrl(c:any) { return buildSubscriptionUrl(c) }
+function subUrl(c:any) { return buildSubscriptionUrl(c, subscriptionFormat.value, singBoxVPN.value) }
 function clashSubUrl(c:any) { return buildClashSubscriptionUrl(c) }
 function clashDownloadUrl(c:any) { return buildClashDownloadUrl(c) }
 async function copySub(c:any) {
@@ -238,12 +241,14 @@ function rebuildClientShare() {
     shareLinks.value = []
     return
   }
-  shareText.value = buildClientMultiShare(available, c, shareTab.value as ShareFormat, networkPolicy.value)
+  shareText.value = buildClientMultiShare(available, c, shareTab.value as ShareFormat, {...networkPolicy.value, client_tun: singBoxVPN.value})
   shareLinks.value = shareTab.value === 'v2rayn' || shareTab.value === 'shadowrocket'
-    ? available.map((n:any) => ({ node:n, link: buildClientMultiShare([n], c, shareTab.value as ShareFormat, networkPolicy.value) }))
+    ? available.map((n:any) => ({ node:n, link: buildClientMultiShare([n], c, shareTab.value as ShareFormat, {...networkPolicy.value, client_tun: singBoxVPN.value}) }))
     : []
 }
 watch(shareTab, () => rebuildClientShare())
+watch(subscriptionFormat, () => rebuildClientShare())
+watch(singBoxVPN, () => rebuildClientShare())
 watch(() => fixedForm.value.relay_server_id, () => { fixedForm.value.relay_host = ""; fillFixedRelayHost() })
 async function copyAny(text:string, label='内容') {
   const ok = await copyText(text)
@@ -315,7 +320,7 @@ function mainQrText() {
   return shareText.value
 }
 function qrModeHint() {
-  if (shareTab.value === 'v2rayn') return 'V2rayN 二维码内容是单节点分享链接（vless/vmess/trojan/ss），下载图片后可直接从图片导入。'
+  if (shareTab.value === 'v2rayn') return 'V2rayN 二维码内容是单节点分享链接（vless/vmess/trojan），下载图片后可直接从图片导入。'
   if (shareTab.value === 'subscription') return '订阅二维码用于批量导入和后续统一更新；HTTP 订阅可能被 v2rayN 拦截。'
   return '当前二维码为单节点配置二维码。'
 }
@@ -323,7 +328,7 @@ onMounted(load)
 </script>
 <template>
   <div v-if="copyToast" class="copy-toast">{{ copyToast }}</div>
-  <div class="page-head"><div><h1 class="page-title">客户管理</h1><p class="page-desc">V1.0.1 多协议客户管理：VLESS/VMess/Trojan/Shadowsocks 入站均可绑定客户并导出订阅。</p></div></div>
+  <div class="page-head"><div><h1 class="page-title">客户管理</h1><p class="page-desc">多协议客户管理：VLESS/VMess/Trojan 入站可绑定客户并导出订阅。</p></div></div>
 
   <div class="client-summary-grid">
     <div class="client-summary-card"><span>客户总数</span><strong>{{ clientStats.total }}</strong></div>
@@ -367,13 +372,13 @@ onMounted(load)
         <div class="form grid-2 compact-form">
           <label><span>客户名</span><input v-model="directForm.username" placeholder="客户A" /></label>
           <label><span>邮箱</span><input v-model="directForm.email" placeholder="可空" /></label>
-          <label><span>流量 GB</span><input v-model.number="directForm.traffic_limit_gb" type="number" /></label>
+          <label><span>流量 GB（仅展示，当前不执行限额）</span><input v-model.number="directForm.traffic_limit_gb" type="number" /></label>
           <label><span>到期设置</span><select v-model="directExpireMode"><option value="long">长期可用</option><option value="custom">指定到期时间</option></select><em class="field-tip">不设置到期时间时，客户默认长期可用。</em></label>
           <label v-if="directExpireMode === 'custom'" class="wide"><span>到期时间</span><input v-model="directForm.expire_at" type="datetime-local" /></label>
         </div>
         <div class="relay-step"><strong>2. 选择直连入站</strong><span>客户连接本机入站，出口 IP 为当前服务器 IP。</span></div>
         <div class="form compact-form">
-          <label><span>直连入站</span><select v-model="directForm.node_id"><option value="">请选择直连入站</option><option v-for="n in clientBindableNodes" :key="n.id" :value="n.id">{{ n.name }} / {{ n.protocol?.toUpperCase() }} / {{ n.host }}:{{ n.port }}</option></select><em class="field-tip">如果没有可选入站，请先到“入站管理”创建入站（VLESS/VMess/Trojan/Shadowsocks 均可）。</em></label>
+          <label><span>直连入站</span><select v-model="directForm.node_id"><option value="">请选择直连入站</option><option v-for="n in clientBindableNodes" :key="n.id" :value="n.id">{{ n.name }} / {{ n.protocol?.toUpperCase() }} / {{ n.host }}:{{ n.port }}</option></select><em class="field-tip">如果没有可选入站，请先到“入站管理”创建入站（VLESS/VMess/Trojan 均可）。</em></label>
         </div>
         <div class="fixed-exit-preview" v-if="directForm.node_id">
           <div class="notice ok">客户连接入口：{{ nodes.find((n:any)=>n.id===directForm.node_id)?.host }}:{{ nodes.find((n:any)=>n.id===directForm.node_id)?.port }}</div>
@@ -388,7 +393,7 @@ onMounted(load)
       <div class="form grid-2 compact-form">
         <label><span>客户名</span><input v-model="fixedForm.username" placeholder="客户A" /></label>
         <label><span>邮箱</span><input v-model="fixedForm.email" placeholder="可空" /></label>
-        <label><span>流量 GB</span><input v-model.number="fixedForm.traffic_limit_gb" type="number" /></label>
+        <label><span>流量 GB（仅展示，当前不执行限额）</span><input v-model.number="fixedForm.traffic_limit_gb" type="number" /></label>
         <label><span>到期设置</span><select v-model="fixedExpireMode"><option value="long">长期可用</option><option value="custom">指定到期时间</option></select><em class="field-tip">不设置到期时间时，客户默认长期可用。</em></label>
         <label v-if="fixedExpireMode === 'custom'" class="wide"><span>到期时间</span><input v-model="fixedForm.expire_at" type="datetime-local" /></label>
       </div>
@@ -423,7 +428,7 @@ onMounted(load)
   <div v-if="showAdvancedClientForm" class="form client-form compact-client-form advanced-client-form">
     <label class="field"><span>客户名</span><input v-model="form.username" placeholder="客户名" /></label>
     <label class="field"><span>邮箱</span><input v-model="form.email" placeholder="邮箱，可空" /></label>
-    <label class="field"><span>流量 GB</span><input v-model.number="form.traffic_limit_gb" placeholder="流量 GB" /></label>
+    <label class="field"><span>流量 GB（仅展示，当前不执行限额）</span><input v-model.number="form.traffic_limit_gb" placeholder="流量 GB" /></label>
     <label class="field"><span>到期时间</span><input v-model="form.expire_at" type="datetime-local" /></label>
     <label class="field"><span>状态</span><select v-model="form.enabled"><option :value="true">启用</option><option :value="false">停用</option></select></label>
     <label class="field wide"><span>关联直连入站</span><select v-model="form.node_ids" multiple class="wide"><option v-for="n in clientBindableNodes" :value="n.id" :key="n.id">{{ n.name }}｜{{ n.protocol?.toUpperCase() }}｜{{ n.host }}:{{ n.port }}</option></select></label>
@@ -497,7 +502,14 @@ onMounted(load)
           <strong>{{ opt.label }}</strong><span>{{ opt.tip }}</span>
         </button>
       </div>
-      <div class="notice warn modal-tip">{{ shareTip }}<br>默认二维码为单节点分享链接（vless/vmess/trojan/ss）；订阅二维码只用于批量更新，HTTP 订阅可能被 v2rayN 拦截。<br v-if="shareTab === 'clash'"><span v-if="shareTab === 'clash'">Clash Verge 请使用 Mihomo / Clash Meta 内核；旧版 Clash 不支持 VLESS Reality。优先复制“Clash Verge 订阅链接”到 Remote，或下载 yaml 后作为本地配置导入。</span></div>
+      <div class="notice warn modal-tip">{{ shareTip }}<br>默认二维码为单节点分享链接（vless/vmess/trojan）；订阅二维码只用于批量更新，HTTP 订阅可能被 v2rayN 拦截。<br v-if="shareTab === 'clash'"><span v-if="shareTab === 'clash'">Clash Verge 请使用 Mihomo / Clash Meta 内核；旧版 Clash 不支持 VLESS Reality。优先复制“Clash Verge 订阅链接”到 Remote，或下载 yaml 后作为本地配置导入。</span></div>
+      <div v-if="shareTab === 'subscription'" class="notice">
+        <label>订阅格式 <select v-model="subscriptionFormat"><option v-for="opt in subscriptionFormatOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option></select></label>
+        <p>{{ subscriptionTip }}</p>
+        <label v-if="subscriptionFormat === 'singbox'"><input type="checkbox" v-model="singBoxVPN" /> VPN/TUN：接管系统流量（手机需 VPN 授权，桌面需管理员权限）</label>
+        <p v-if="shareAvailableNodes.length >= 10">节点较多时，如 Clash Verge 或 iOS 客户端导入卡顿、报 YAML 大小限制，请尝试通用 v2rayN base64 格式。</p>
+      </div>
+      <label v-if="shareTab === 'singbox'"><input type="checkbox" v-model="singBoxVPN" /> VPN/TUN：接管系统流量（需 VPN 或管理员权限）</label>
       <div v-if="!shareAvailableNodes.length && shareTab !== 'subscription'" class="empty-state">该客户暂无可用入站，请先新增入站或检查客户关联入站。</div>
       <div v-else class="share-modal-body">
         <div class="share-config-box">

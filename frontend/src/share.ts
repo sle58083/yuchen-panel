@@ -1,12 +1,20 @@
 import qrcode from 'qrcode-generator'
 
+export type SubscriptionFormat = 'auto' | 'clash' | 'singbox' | 'v2rayn' | 'raw'
+export const subscriptionFormatOptions: Array<{value: SubscriptionFormat;label: string;tip: string}> = [
+  {value:'auto',label:'自动识别',tip:'根据客户端 User-Agent 选择格式；识别失败使用通用 base64。'},
+  {value:'clash',label:'Clash / Mihomo',tip:'Clash Verge Rev、Mihomo Party、Stash：使用 YAML。'},
+  {value:'singbox',label:'sing-box ≥1.12',tip:'sing-box、SFA/SFI，以及支持现代 sing-box JSON 的 NekoBox 构建。≥1.13 请勿手工编辑导出的 DNS 段。'},
+  {value:'v2rayn',label:'通用 v2rayN',tip:'v2rayN、v2rayNG、Shadowrocket：使用 base64 链接列表。'},
+]
+
 export type ShareFormat = 'v2rayn' | 'shadowrocket' | 'clash' | 'singbox'
 
 export const shareFormatOptions: Array<{ value: ShareFormat; label: string; tip: string }> = [
-  { value: 'v2rayn', label: 'V2rayN', tip: '生成 vless:// / vmess:// / trojan:// / ss:// 单节点链接，优先用于扫码导入。' },
+  { value: 'v2rayn', label: 'V2rayN', tip: '生成 vless:// / vmess:// / trojan:// 单节点链接，优先用于扫码导入。' },
   { value: 'shadowrocket', label: 'Shadowrocket', tip: 'iPhone 小火箭，使用同一条单节点链接。' },
   { value: 'clash', label: 'Clash Meta', tip: '生成 Clash Meta / Mihomo YAML。Clash Verge 建议优先使用专用订阅链接或下载 yaml 文件。' },
-  { value: 'singbox', label: 'sing-box', tip: '生成 sing-box JSON 配置，可用于 sing-box / SFI。' },
+  { value: 'singbox', label: 'sing-box', tip: '生成 sing-box ≥1.12 JSON 配置。≥1.13 请勿手工编辑导出的 DNS 段。' },
 ]
 
 
@@ -56,8 +64,9 @@ function appBasePath(): string {
   return base.endsWith('/') ? base : `${base}/`
 }
 
-export function buildSubscriptionUrl(client: any): string {
-  return `${location.origin}${appBasePath()}sub/${client.subscribe_token}`
+export function buildSubscriptionUrl(client: any, format: SubscriptionFormat = 'auto', vpn = false): string {
+  const base = `${location.origin}${appBasePath()}sub/${encodeURIComponent(client.subscribe_token)}`
+  return format === 'auto' ? base : `${base}?format=${encodeURIComponent(format)}${format === 'singbox' && vpn ? '&profile=tun' : ''}`
 }
 
 export function buildClashSubscriptionUrl(client: any): string {
@@ -75,7 +84,12 @@ export function buildShortNodeUrl(client: any, node: any): string {
 export function clientCanUseNode(client: any, node: any): boolean {
   const ids = Array.isArray(client?.node_ids) ? client.node_ids : []
   if (client?.enabled === false) return false
-  if (client?.expire_at && new Date(client.expire_at).getTime() <= Date.now()) return false
+  const expiry = String(client?.expire_at || '')
+  const permanent = /^0001-01-01T00:00:00(?:\.0+)?(?:Z|\+00:00)$/.test(expiry)
+  if (expiry && !permanent) {
+    const timestamp = new Date(expiry).getTime()
+    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return false
+  }
   return ids.includes(node.id)
 }
 
@@ -100,7 +114,22 @@ function valueOr(v: any, fallback: string): string {
 }
 
 function nodeHost(node: any): string {
-  return valueOr(node.host || node.address || node.ip, '127.0.0.1')
+  return valueOr(node.host || node.address || node.ip, '127.0.0.1').replace(/^\[|\]$/g, '')
+}
+
+function uriHost(host: string): string {
+  return host.includes(':') ? `[${host.replace(/%/g, '%25')}]` : host
+}
+
+function uniqueProxyNames(nodes: any[]): any[] {
+  const used = new Set(['PROXY', 'direct', 'DIRECT'])
+  return nodes.map(node => {
+    const base = safeName(node)
+    let name = base
+    for (let i = 2; used.has(name); i++) name = `${base} #${i}`
+    used.add(name)
+    return {...node, name}
+  })
 }
 
 function nodeName(node: any): string {
@@ -129,7 +158,7 @@ function utf8ToBase64(s: string): string {
 }
 
 export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shadowrocket' = 'v2rayn'): string {
-  const host = nodeHost(node)
+  const host = uriHost(nodeHost(node))
   const port = Number(node.port || 443)
   const transport = transportOf(node)
   const security = valueOr(node.security, 'none').toLowerCase()
@@ -146,8 +175,8 @@ export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shado
     q.set('spx', valueOr(node.reality_spider_x, '/'))
   }
   q.set('type', transport)
-  if (transport === 'ws' && node.path) q.set('path', node.path)
-  if (transport === 'grpc' && node.path) q.set('serviceName', String(node.path).replace(/^\/+/, ''))
+  if (transport === 'ws') q.set('path', valueOr(node.path, '/yuchen'))
+  if (transport === 'grpc') q.set('serviceName', valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen'))
   const label = encodeURIComponent(nodeName(node))
   return `vless://${client.uuid}@${host}:${port}?${q.toString()}#${label}`
 }
@@ -170,8 +199,8 @@ export function buildVmessLink(node: any, client: any): string {
     path: '',
     tls: '',
   }
-  if (transport === 'ws') obj.path = String(node.path || '')
-  if (transport === 'grpc') obj.path = String(node.path || '').replace(/^\/+/, '')
+  if (transport === 'ws') obj.path = valueOr(node.path, '/yuchen')
+  if (transport === 'grpc') obj.path = valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen')
   if (security === 'tls' || security === 'reality') {
     obj.tls = 'tls'
     obj.sni = String(node.sni || '')
@@ -187,7 +216,7 @@ export function buildVmessLink(node: any, client: any): string {
 
 // buildTrojanLink 生成 trojan:// 链接，密码与后端 Xray clients 保持一致。
 export function buildTrojanLink(node: any, client: any): string {
-  const host = nodeHost(node)
+  const host = uriHost(nodeHost(node))
   const port = Number(node.port || 443)
   const transport = transportOf(node)
   const security = valueOr(node.security, 'none').toLowerCase()
@@ -203,10 +232,10 @@ export function buildTrojanLink(node: any, client: any): string {
   }
   if (node.sni) q.set('sni', node.sni)
   q.set('type', transport)
-  if (transport === 'ws' && node.path) q.set('path', node.path)
-  if (transport === 'grpc' && node.path) q.set('serviceName', String(node.path).replace(/^\/+/, ''))
+  if (transport === 'ws') q.set('path', valueOr(node.path, '/yuchen'))
+  if (transport === 'grpc') q.set('serviceName', valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen'))
   const label = encodeURIComponent(nodeName(node))
-  const password = String(client.password || client.uuid || '')
+  const password = encodeURIComponent(String(client.password || client.uuid || ''))
   return `trojan://${password}@${host}:${port}?${q.toString()}#${label}`
 }
 
@@ -237,13 +266,13 @@ function clashProxyTail(node: any, security: string, transport: string, lines: s
     lines.push(`      public-key: ${yamlQuote(node.reality_public_key || '')}`)
     if (node.reality_short_id) lines.push(`      short-id: ${yamlQuote(node.reality_short_id || '')}`)
   }
-  if (transport === 'ws' && node.path) {
+  if (transport === 'ws') {
     lines.push(`    ws-opts:`)
-    lines.push(`      path: ${yamlQuote(node.path)}`)
+    lines.push(`      path: ${yamlQuote(valueOr(node.path, '/yuchen'))}`)
   }
-  if (transport === 'grpc' && node.path) {
+  if (transport === 'grpc') {
     lines.push(`    grpc-opts:`)
-    lines.push(`      grpc-service-name: ${yamlQuote(String(node.path).replace(/^\/+/, ''))}`)
+    lines.push(`      grpc-service-name: ${yamlQuote(valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen'))}`)
   }
 }
 
@@ -260,6 +289,7 @@ function clashProxy(node: any, client: any): string {
     lines.push(`    uuid: ${yamlQuote(client.uuid)}`)
     lines.push(`    alterId: 0`)
     lines.push(`    cipher: auto`)
+    lines.push(`    network: ${yamlQuote(transport)}`)
     lines.push(`    udp: true`)
     clashProxyTail(node, security, transport, lines)
     return lines.join('\n')
@@ -282,7 +312,7 @@ function clashProxy(node: any, client: any): string {
 }
 
 export function buildClashMetaConfig(nodes: any[], client: any, policy: any = {}): string {
-  const enabled = nodes.filter(n => n && n.enabled !== false && isClientShareNode(n))
+  const enabled = uniqueProxyNames(nodes.filter(n => n && n.enabled !== false && isClientShareNode(n)))
   const names = enabled.map(n => safeName(n))
   const proxyList = enabled.map(n => clashProxy(n, client)).join('\n')
   const groupProxies = names.length ? [...names.map(n => `      - ${yamlQuote(n)}`), '      - DIRECT'].join('\n') : '      - DIRECT'
@@ -318,7 +348,6 @@ export function buildClashMetaConfig(nodes: any[], client: any, policy: any = {}
 
 function singBoxTLS(node: any, forceTLS = false): any | undefined {
   const security = valueOr(node.security, 'none').toLowerCase()
-  const proto = String(node?.protocol || '').toLowerCase()
   const needTLS = forceTLS || security === 'tls' || security === 'reality'
   if (!needTLS) return undefined
   const tls: any = {
@@ -342,7 +371,7 @@ function singBoxTransport(node: any): any | undefined {
     return { type: 'ws', path: valueOr(node.path, '/yuchen') }
   }
   if (transport === 'grpc') {
-    return { type: 'grpc', service_name: valueOr(String(node.path || '').replace(/^\/+/, ''), 'yuchen') }
+    return { type: 'grpc', service_name: valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen') }
   }
   return undefined
 }
@@ -395,21 +424,21 @@ function singBoxOutbound(node: any, client: any): any {
 }
 
 export function buildSingBoxConfig(nodes: any[], client: any, policy: any = {}): string {
-  const enabled = nodes.filter(n => n && n.enabled !== false && isClientShareNode(n))
+  const enabled = uniqueProxyNames(nodes.filter(n => n && n.enabled !== false && isClientShareNode(n)))
   const outbounds = enabled.map(n => singBoxOutbound(n, client))
   const selector = {
     type: 'selector',
     tag: 'PROXY',
-    outbounds: outbounds.map(o => o.tag),
+    outbounds: [...outbounds.map(o => o.tag), 'direct'],
     default: outbounds[0]?.tag || 'direct',
   }
-  const config = {
+  const config: any = {
     log: { level: 'info' },
     dns: {
       servers: [
-        { tag: 'cloudflare', address: '1.1.1.1' },
-        { tag: 'google', address: '8.8.8.8' },
-        ...(policy?.sing_box_include_quad9 ? [{ tag: 'quad9', address: '9.9.9.9' }] : []),
+        { type: 'udp', tag: 'cloudflare', server: '1.1.1.1' },
+        { type: 'udp', tag: 'google', server: '8.8.8.8' },
+        ...(policy?.sing_box_include_quad9 ? [{ type: 'udp', tag: 'quad9', server: '9.9.9.9' }] : []),
       ],
       final: 'cloudflare',
       strategy: 'ipv4_only',
@@ -418,7 +447,12 @@ export function buildSingBoxConfig(nodes: any[], client: any, policy: any = {}):
       { type: 'mixed', tag: 'mixed-in', listen: '127.0.0.1', listen_port: 2080 },
     ],
     outbounds: [selector, ...outbounds, { type: 'direct', tag: 'direct' }],
-    route: { final: 'PROXY' },
+    route: { final: 'PROXY', default_domain_resolver: 'cloudflare' },
+  }
+  if (policy?.client_tun) {
+    config.inbounds.unshift({type:'tun',tag:'tun-in',address:['172.19.0.1/30','fdfe:dcba:9876::1/126'],mtu:1400,auto_route:true,strict_route:true,stack:'system'})
+    config.route.auto_detect_interface = true
+    config.route.rules = [{port:53,action:'hijack-dns'}]
   }
   return JSON.stringify(config, null, 2)
 }

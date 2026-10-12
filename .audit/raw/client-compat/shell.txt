@@ -1,0 +1,27 @@
+COMMAND: bash -n install.sh
+EXIT_CODE: 0
+COMMAND: bash -n deploy/install.sh
+EXIT_CODE: 0
+COMMAND: bash -n deploy/agent-install.sh
+EXIT_CODE: 0
+COMMAND: bash -n deploy/uninstall.sh
+EXIT_CODE: 0
+COMMAND: bash -n scripts/build-fast-release.sh
+EXIT_CODE: 0
+COMMAND: bash -n scripts/yuchen-panel
+EXIT_CODE: 0
+COMMAND: bash -n scripts/verify-clients.sh
+EXIT_CODE: 0
+COMMAND: shellcheck --severity=error <seven scripts>
+EXIT_CODE: 0
+COMMAND: shellcheck <seven scripts>
+
+In deploy/install.sh line 549:
+  for i in $(seq 1 90); do
+  ^-^ SC2034 (warning): i appears unused. Verify use (or export if used externally).
+
+For more information:
+  https://www.shellcheck.net/wiki/SC2034 -- i appears unused. Verify use (or ...
+EXIT_CODE: 1
+COMMAND: shellcheck scripts/verify-clients.sh
+EXIT_CODE: 0
