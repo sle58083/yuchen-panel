@@ -2,6 +2,8 @@
 
 ## Unreleased — audit Batch 1
 
+- C2 / P1-008: upgrade runner assignments use checked Bash single-quoted literals and reject CR/LF/NUL. Package downloads permit only HTTPS redirects; manifest downloads permit at most five same-host HTTPS redirects. Configure an HTTPS manifest URL before upgrading; custom API health port handling remains tracked as P2-027.
+
 - **C1 / P0-001, breaking:** API startup rejects missing, short or public JWT secrets. Set `YC_JWT_SECRET` to a cryptographically random value of at least 32 characters before restarting manual/Docker deployments. The root installer refreshes weak historical `.env` signing keys before stopping services; existing tokens become invalid after restart. The deploy installer already generates a random 64-character key.
 - First initialization requires explicit `YC_ADMIN_USERNAME` and a password of at least 12 characters. Compose rejects missing credentials. Existing accounts with missing hashes are disabled; recover them with a deliberate offline password reset. Existing valid accounts are preserved; operators must change any historical publicly known password.
 - Every authenticated request checks that its database account still exists, is enabled and has `super_admin` privileges. Audit identity comes from the database.

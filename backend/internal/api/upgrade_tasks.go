@@ -318,23 +318,36 @@ func startUpgradeRunner(taskID, script string) error {
 }
 
 func writeUpgradeRunner(task upgradeTaskState, manifestURL string) (string, error) {
-	scriptPath := filepath.Join(installDir, "logs", task.ID+".sh")
-	statusPath := upgradeStatePath()
-	backupDir := filepath.Join(installDir, "backups", "upgrade", task.ID)
+	return writeUpgradeRunnerAt(task, manifestURL, installDir)
+}
+
+func writeUpgradeRunnerAt(task upgradeTaskState, manifestURL, root string) (string, error) {
+	if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(task.ID) {
+		return "", fmt.Errorf("unsafe task id")
+	}
+	scriptPath := filepath.Join(root, "logs", task.ID+".sh")
+	statusPath := filepath.Join(root, "data", "upgrade-task-latest.json")
+	backupDir := filepath.Join(root, "backups", "upgrade", task.ID)
+	values, err := shellEscapeValues(task.ID, statusPath, task.LogFile, task.WorkDir, backupDir, task.Package, task.DownloadURL, task.SHA256, manifestURL, root, panelVersion, task.TargetVersion)
+	if err != nil {
+		return "", err
+	}
 	content := fmt.Sprintf(`#!/usr/bin/env bash
 set -u
-TASK_ID=%q
-STATUS_FILE=%q
-LOG_FILE=%q
-WORK_DIR=%q
-BACKUP_DIR=%q
-PKG=%q
-DOWNLOAD_URL=%q
-SHA256=%q
-MANIFEST_URL=%q
-INSTALL_DIR=%q
-CURRENT_VERSION=%q
-TARGET_VERSION=%q
+umask 077
+TASK_ID=%s
+STATUS_FILE=%s
+LOG_FILE=%s
+WORK_DIR=%s
+BACKUP_DIR=%s
+PKG=%s
+DOWNLOAD_URL=%s
+SHA256=%s
+MANIFEST_URL=%s
+INSTALL_DIR=%s
+CURRENT_VERSION=%s
+TARGET_VERSION=%s
+# TODO P2-027: derive the health port from YC_API_ADDR in the stability batch.
 API_URL="http://127.0.0.1:8088/api/health"
 
 mkdir -p "$(dirname "$STATUS_FILE")" "$(dirname "$LOG_FILE")" "$WORK_DIR" "$BACKUP_DIR"
@@ -408,7 +421,7 @@ cd "$WORK_DIR" || fail 16 precheck "无法进入升级工作目录"
 rm -f "$PKG"
 write_status downloading downloading "正在下载升级包"
 echo "Downloading: $DOWNLOAD_URL"
-curl -fL --retry 3 --connect-timeout 10 -o "$PKG" "$DOWNLOAD_URL" || fail 21 downloading "升级包下载失败"
+curl --proto '=https' --proto-redir '=https' -fL --retry 3 --connect-timeout 10 -o "$PKG" "$DOWNLOAD_URL" || fail 21 downloading "升级包下载失败"
 
 write_status verifying verifying "正在校验 SHA256"
 echo "$SHA256  $PKG" | sha256sum -c - || fail 22 verifying "SHA256 校验失败"
@@ -449,7 +462,10 @@ done
 health=$(curl -fsS --max-time 3 "$API_URL" 2>/dev/null || true)
 echo "Last API health: $health"
 fail 34 verify "安装脚本已结束，但 API health 未返回目标版本 $TARGET_VERSION"
-`, task.ID, statusPath, task.LogFile, task.WorkDir, backupDir, task.Package, task.DownloadURL, task.SHA256, manifestURL, installDir, panelVersion, task.TargetVersion)
+`, values...)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0700); err != nil {
+		return "", err
+	}
 	if err := os.WriteFile(scriptPath, []byte(content), 0700); err != nil {
 		return "", err
 	}
