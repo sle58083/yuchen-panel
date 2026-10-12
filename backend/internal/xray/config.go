@@ -225,10 +225,9 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 					"port":    landing.Port,
 					"network": relayNetwork,
 				},
+				// Preserve the fixed relay destination, including the REALITY handshake.
 				"sniffing": map[string]any{
-					"enabled":      true,
-					"destOverride": []any{"http", "tls", "quic"},
-					"routeOnly":    false,
+					"enabled": false,
 				},
 				"tag": relay.ID,
 			})
