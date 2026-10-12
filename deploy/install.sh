@@ -150,6 +150,7 @@ install_base_deps() {
   local missing=()
   need_cmd curl || missing+=(curl)
   need_cmd python3 || missing+=(python3)
+  need_cmd jq || missing+=(jq)
   need_cmd rsync || missing+=(rsync)
   need_cmd ss || missing+=(iproute2)
   need_cmd nginx || missing+=(nginx)

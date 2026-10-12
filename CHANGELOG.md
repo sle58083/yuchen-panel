@@ -2,6 +2,8 @@
 
 ## Unreleased — audit Batch 1
 
+- C3 / P1-001, P2-005: jq is now required by both installers. Manifest values and installation paths are validated, release extraction uses a new mktemp directory, and downloads reject non-HTTPS redirects. Custom manifests must use the documented version/package whitelist and valid string fields; extraction preserves existing release directories.
+
 - C2 / P1-008: upgrade runner assignments use checked Bash single-quoted literals and reject CR/LF/NUL. Package downloads permit only HTTPS redirects; manifest downloads permit at most five same-host HTTPS redirects. Configure an HTTPS manifest URL before upgrading; custom API health port handling remains tracked as P2-027.
 
 - **C1 / P0-001, breaking:** API startup rejects missing, short or public JWT secrets. Set `YC_JWT_SECRET` to a cryptographically random value of at least 32 characters before restarting manual/Docker deployments. The root installer refreshes weak historical `.env` signing keys before stopping services; existing tokens become invalid after restart. The deploy installer already generates a random 64-character key.
