@@ -1,0 +1,4 @@
+COMMAND: Windows Invoke-WebRequest <public fixture subscription> ?format=singbox
+HTTP_STATUS: 200
+OUTBOUNDS: 14
+DNS_TYPES: udp,udp

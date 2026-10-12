@@ -12,6 +12,15 @@ Yuchen Panel 是一套面向跨境业务、外贸团队、海外社媒运营、A
 4. 跨境技术服务商：提供部署、维护、故障排查和长期升级服务。
 5. 企业私有化客户：需要多服务器总控、客户后台、权限隔离和审计日志。
 
+## 客户端支持约定
+
+订阅提供 Clash/Mihomo YAML、通用 v2rayN/Shadowrocket base64，以及 sing-box 现代 JSON。
+最低支持 **sing-box ≥1.12.0**；1.13.0 及以上必须使用现代 DNS，旧格式可能 FATAL，1.14 已移除旧格式。
+如你的 sing-box ≥1.13，请勿手工编辑导出的 DNS 段。不提供 legacy 导出。
+桌面默认 mixed 入站 127.0.0.1:2080；手机 VPN 或桌面 TUN 使用可选 `profile=tun`，运行时需 VPN/管理员权限。
+具体客户端矩阵、自动下载脚本及待执行的设备验收见 [CLIENT-COMPAT.md](CLIENT-COMPAT.md)。
+当前设备与真实节点连通测试为 MANUAL_REQUIRED；流量配额仅展示，未实施强制限额。
+
 ## 产品版本
 
 ### Community 基础版

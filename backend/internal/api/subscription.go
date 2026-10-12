@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,85 +27,59 @@ func isShareableNodeProtocol(p string) bool {
 }
 
 func (r *Router) subscription(w http.ResponseWriter, req *http.Request) {
-	path := strings.Trim(strings.TrimPrefix(req.URL.Path, "/sub/"), "/")
-	parts := strings.Split(path, "/")
-	token := ""
-	if len(parts) > 0 {
-		token = strings.TrimSpace(parts[0])
-	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(req.URL.Path, "/sub/"), "/"), "/")
+	token := strings.TrimSpace(parts[0])
 	if token == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	format := strings.ToLower(strings.TrimSpace(req.URL.Query().Get("format")))
-	if format == "" {
-		format = strings.ToLower(strings.TrimSpace(req.URL.Query().Get("target")))
-	}
-	if format == "" && len(parts) > 1 {
-		format = strings.ToLower(strings.TrimSpace(parts[1]))
-	}
-	isClash := format == "clash" || format == "clash-meta" || format == "mihomo" || format == "yaml" || format == "yml"
-
-	r.store.Mu.RLock()
-	defer r.store.Mu.RUnlock()
-	var client model.Client
-	found := false
-	for _, c := range r.store.Data.Clients {
-		if c.SubscribeToken == token {
-			client = c
-			found = true
-			break
-		}
-	}
-	if !found {
-		http.Error(w, "subscription not found", http.StatusNotFound)
+	client, nodes, relays, policy, status := r.subscriptionSnapshot(token)
+	if status != http.StatusOK {
+		http.Error(w, "subscription unavailable", status)
 		return
 	}
-	if !client.Enabled || (!client.ExpireAt.IsZero() && client.ExpireAt.Before(time.Now())) {
-		http.Error(w, "subscription expired or disabled", http.StatusForbidden)
-		return
-	}
-	allowed := model.AllowedNodes(client)
-	nodes := []model.Node{}
-	for _, n := range r.store.Data.Nodes {
-		if !n.Enabled {
-			continue
-		}
-		if !allowed[n.ID] {
-			continue
-		}
-		if !isShareableNodeProtocol(n.Protocol) {
-			continue
-		}
-		nodes = append(nodes, n)
-	}
-	relays := []model.RelayRoute{}
-	for _, rid := range client.RelayRouteIDs {
-		if rr, ok := r.store.Data.RelayRoutes[rid]; ok && rr.Enabled && rr.RouteMode == "socks5_route" {
-			relays = append(relays, rr)
-		}
-	}
-	if isClash {
-		yaml := buildClashMetaSubscription(nodes, relays, client, r.store.Data.NetworkPolicy)
-		w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		if req.URL.Query().Get("download") == "1" || (len(parts) > 2 && strings.ToLower(parts[2]) == "download") {
-			w.Header().Set("Content-Disposition", "attachment; filename=\"yuchen-clash.yaml\"")
-		}
-		_, _ = w.Write([]byte(yaml))
-		return
-	}
-	lines := []string{}
-	for _, n := range nodes {
-		lines = append(lines, buildNodeShareLink(n, client))
-	}
-	for _, rr := range relays {
-		lines = append(lines, buildRelayShareLink(rr, client))
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	format, source := subscriptionFormat(req, parts)
+	// Deliberately do not log bearer tokens, subscription URLs or the raw UA.
+	r.store.Mu.Lock()
+	r.store.AddLog(client.Username, "subscription.format", clientIP(req), "format="+format+" source="+source)
+	r.store.Mu.Unlock()
+	nodes, relays = uniqueSubscriptionNames(nodes, relays)
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(strings.Join(lines, "\n")))
+	switch format {
+	case "singbox":
+		config := buildSingBoxSubscription(nodes, relays, client, policy)
+		profile := req.URL.Query().Get("profile")
+		ua := strings.ToLower(req.UserAgent())
+		if profile == "tun" || (profile == "" && (strings.HasPrefix(ua, "sfa/") || strings.HasPrefix(ua, "sfi/"))) {
+			addSingBoxTunProfile(config)
+		}
+		writeJSON(w, http.StatusOK, config)
+		return
+	case "clash":
+		w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+		if req.URL.Query().Get("download") == "1" {
+			w.Header().Set("Content-Disposition", `attachment; filename="yuchen-clash.yaml"`)
+		}
+		_, _ = w.Write([]byte(buildClashMetaSubscription(nodes, relays, client, policy)))
+		return
+	case "v2rayn", "raw":
+		lines := []string{}
+		for _, node := range nodes {
+			lines = append(lines, buildNodeShareLink(node, client))
+		}
+		for _, relay := range relays {
+			lines = append(lines, buildRelayShareLink(relay, client))
+		}
+		body := strings.Join(lines, "\n")
+		if format == "v2rayn" {
+			body = base64.StdEncoding.EncodeToString([]byte(body))
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(body))
+		return
+	}
 }
+
 func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 	// V0.7.5.9.1: /s/<token>/<nodeID> 保留为兼容短链接接口。
 	// 默认二维码不再使用 HTTP 短链接，而是直接编码 vless:// 单节点链接。
@@ -230,13 +206,13 @@ func buildClashProxyLines(name, host string, port int, uuid, security, transport
 			lines = append(lines, fmt.Sprintf("      short-id: %s", yamlQuote(shortID)))
 		}
 	}
-	if transport == "ws" && strings.TrimSpace(path) != "" {
+	if transport == "ws" {
 		lines = append(lines, "    ws-opts:")
-		lines = append(lines, fmt.Sprintf("      path: %s", yamlQuote(path)))
+		lines = append(lines, fmt.Sprintf("      path: %s", yamlQuote(valueOr(path, "/yuchen"))))
 	}
-	if transport == "grpc" && strings.TrimSpace(path) != "" {
+	if transport == "grpc" {
 		lines = append(lines, "    grpc-opts:")
-		lines = append(lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(strings.Trim(path, "/"))))
+		lines = append(lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(grpcService(path))))
 	}
 	return lines
 }
@@ -335,14 +311,13 @@ func buildVlessShareLink(n model.Node, client model.Client) string {
 		q.Set("spx", valueOr(n.RealitySpiderX, "/"))
 	}
 	q.Set("type", valueOr(n.Transport, "tcp"))
-	if strings.ToLower(n.Transport) == "ws" && n.Path != "" {
-		q.Set("path", n.Path)
+	if strings.ToLower(n.Transport) == "ws" {
+		q.Set("path", valueOr(n.Path, "/yuchen"))
 	}
-	if strings.ToLower(n.Transport) == "grpc" && n.Path != "" {
-		q.Set("serviceName", strings.Trim(n.Path, "/"))
+	if strings.ToLower(n.Transport) == "grpc" {
+		q.Set("serviceName", grpcService(n.Path))
 	}
-	name := url.QueryEscape(n.Name)
-	return fmt.Sprintf("vless://%s@%s:%d?%s#%s", client.UUID, host, n.Port, q.Encode(), name)
+	return (&url.URL{Scheme: "vless", User: url.User(client.UUID), Host: net.JoinHostPort(strings.Trim(host, "[]"), strconv.Itoa(n.Port)), RawQuery: q.Encode(), Fragment: n.Name}).String()
 }
 
 func buildRelayShareLink(r model.RelayRoute, client model.Client) string {
@@ -361,8 +336,7 @@ func buildRelayShareLink(r model.RelayRoute, client model.Client) string {
 	}
 	q.Set("spx", valueOr(r.RelayRealitySpiderX, "/"))
 	q.Set("type", "tcp")
-	name := url.QueryEscape(r.Name)
-	return fmt.Sprintf("vless://%s@%s:%d?%s#%s", client.UUID, valueOr(r.RelayHost, "127.0.0.1"), r.RelayPort, q.Encode(), name)
+	return (&url.URL{Scheme: "vless", User: url.User(client.UUID), Host: net.JoinHostPort(strings.Trim(valueOr(r.RelayHost, "127.0.0.1"), "[]"), strconv.Itoa(r.RelayPort)), RawQuery: q.Encode(), Fragment: r.Name}).String()
 }
 
 func valueOr(v, fallback string) string {
@@ -391,10 +365,10 @@ func buildVmessShareLink(n model.Node, client model.Client) string {
 		"tls":  "",
 	}
 	if transport == "ws" {
-		obj["path"] = n.Path
+		obj["path"] = valueOr(n.Path, "/yuchen")
 	}
 	if transport == "grpc" {
-		obj["path"] = strings.Trim(n.Path, "/")
+		obj["path"] = grpcService(n.Path)
 	}
 	if security == "tls" || security == "reality" {
 		obj["tls"] = "tls"
@@ -432,14 +406,13 @@ func buildTrojanShareLink(n model.Node, client model.Client) string {
 	}
 	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
 	q.Set("type", transport)
-	if transport == "ws" && n.Path != "" {
-		q.Set("path", n.Path)
+	if transport == "ws" {
+		q.Set("path", valueOr(n.Path, "/yuchen"))
 	}
-	if transport == "grpc" && n.Path != "" {
-		q.Set("serviceName", strings.Trim(n.Path, "/"))
+	if transport == "grpc" {
+		q.Set("serviceName", grpcService(n.Path))
 	}
-	name := url.QueryEscape(nodeShareName(n))
-	return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", xray.TrojanClientPassword(client), nodeHost(n), n.Port, q.Encode(), name)
+	return (&url.URL{Scheme: "trojan", User: url.User(xray.TrojanClientPassword(client)), Host: net.JoinHostPort(strings.Trim(nodeHost(n), "[]"), strconv.Itoa(n.Port)), RawQuery: q.Encode(), Fragment: nodeShareName(n)}).String()
 }
 
 // buildClashProxyLinesForNode 按协议生成 Clash Meta / Mihomo proxies 段。
@@ -461,6 +434,7 @@ func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
 			fmt.Sprintf("    uuid: %s", yamlQuote(client.UUID)),
 			"    alterId: 0",
 			"    cipher: auto",
+			fmt.Sprintf("    network: %s", yamlQuote(transport)),
 			"    udp: true",
 		}
 		appendClashTransportAndTLS(&lines, security, transport, n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.Path)
@@ -508,12 +482,12 @@ func appendClashTransportAndTLS(lines *[]string, security, transport, sni, finge
 			*lines = append(*lines, fmt.Sprintf("      short-id: %s", yamlQuote(shortID)))
 		}
 	}
-	if transport == "ws" && strings.TrimSpace(path) != "" {
+	if transport == "ws" {
 		*lines = append(*lines, "    ws-opts:")
-		*lines = append(*lines, fmt.Sprintf("      path: %s", yamlQuote(path)))
+		*lines = append(*lines, fmt.Sprintf("      path: %s", yamlQuote(valueOr(path, "/yuchen"))))
 	}
-	if transport == "grpc" && strings.TrimSpace(path) != "" {
+	if transport == "grpc" {
 		*lines = append(*lines, "    grpc-opts:")
-		*lines = append(*lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(strings.Trim(path, "/"))))
+		*lines = append(*lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(grpcService(path))))
 	}
 }

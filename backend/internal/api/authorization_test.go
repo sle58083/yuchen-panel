@@ -60,7 +60,7 @@ func TestSubscriptionUsesExplicitGrantsAndRetiresShadowsocks(t *testing.T) {
 	for _, ids := range [][]string{nil, {"node", "old"}} {
 		s.Data.Clients["client"] = model.Client{ID: "client", SubscribeToken: "token", Enabled: true, UUID: "uuid-client", NodeIDs: ids}
 		w := httptest.NewRecorder()
-		r.subscription(w, httptest.NewRequest("GET", "/sub/token", nil))
+		r.subscription(w, httptest.NewRequest("GET", "/sub/token?format=raw", nil))
 		if w.Code != 200 {
 			t.Fatal(w.Code)
 		}

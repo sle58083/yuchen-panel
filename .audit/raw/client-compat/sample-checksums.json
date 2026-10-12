@@ -1,0 +1,34 @@
+{
+  "clash.yaml": {
+    "bytes": 3465,
+    "sha256": "0cb1d760d92a356d7bc10de4a0fa4e837ca6a87af07614ed3a43dabedef815d6"
+  },
+  "legacy-singbox.json": {
+    "bytes": 4413,
+    "sha256": "51613fde76ed9b3de9bf5da6380fcc8489afc1e926c87487fe2859b53e488c2e"
+  },
+  "singbox-tun.json": {
+    "bytes": 3229,
+    "sha256": "3e478d581a43be37bff6dda8a4d7fb62ff3fb1c9519245f3f72c7c71700ac18b"
+  },
+  "singbox.json": {
+    "bytes": 3008,
+    "sha256": "ba477fb88408b05869af55778b964a858223f2777141c8dd44a4dfe37a1b54c8"
+  },
+  "single-node-links.txt": {
+    "bytes": 1979,
+    "sha256": "42512093e2168d0e3667cb90c47caf14c58e28f39e411f3833d050fb3482ee4c"
+  },
+  "v2rayn.txt": {
+    "bytes": 2640,
+    "sha256": "6951592968660792ac6e4c7e0e17a4c4d214e1e995ee175b4354ac3c752955d3"
+  },
+  "frontend-singbox.json": {
+    "bytes": 4456,
+    "sha256": "ce88476d5dc07512ae6b819102e7980ffe2b248352d2c6e0754ae42364f1dee2"
+  },
+  "frontend-singbox-tun.json": {
+    "bytes": 4819,
+    "sha256": "453c981e5c8e5494fd57155d8f9b46a3cac6d97dcc69b2469ba59aa6e120ae1b"
+  }
+}

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — C10 client compatibility
+
+- C10 / P2-023: the backend independently serves sing-box JSON for singbox/sing-box/sb/json aliases; both backend and frontend use typed UDP DNS and a default domain resolver. Minimum supported core is sing-box 1.12.0. No legacy export branch is provided.
+- **Compatibility change:** default and unknown-format subscriptions now return base64 URI lists. Tools expecting the previous unencoded response must request `format=raw`. Explicit formats override UA detection; format selection is logged without bearer tokens.
+- C10 / P2-022: Trojan password, Unicode remarks and IPv6 URI endpoints round-trip correctly in backend and frontend. VMess Clash export includes its transport network; gRPC defaults agree with the server's `yuchen` service name.
+- C10 / P2-021: reserved/duplicate proxy names are made unique in Clash and sing-box exports. Empty subscriptions keep a valid direct selector.
+- Optional `profile=tun` / UI VPN export adds TUN with MTU 1400, DNS hijack and automatic interface detection. Default desktop config remains localhost mixed port 2080; running VPN requires client permissions.
+- Correct the C4 frontend expiry regression: Go's zero time means permanent authorization, not an expired client. Remove stale SS advertising from the client share UI; traffic quota labels explicitly say display only (P2-008 enforcement deferred).
+- Add `scripts/verify-clients.sh` and `docs/CLIENT-COMPAT.md`. Device/connection T1–T6 remain operator-required; config-only core checks do not establish throughput or real node connectivity. No reinstall is required for client export; deploy the tested branch API and rebuilt web assets on a test machine before acceptance.
+
 ## Unreleased — audit Batch 1
 
 - **C4 / P1-010, P1-011, breaking:** empty node bindings no longer grant every node. Rebind intended nodes explicitly; deleting the last node/relay authorization disables the affected client. Fixed-exit relay grants stay independent of ordinary node grants.
