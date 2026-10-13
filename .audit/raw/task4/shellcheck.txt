@@ -1,0 +1,4 @@
+COMMAND: bash -n scripts/*.sh deploy/install.sh
+COMMAND: shellcheck --severity=error scripts/*.sh deploy/install.sh
+COMMAND: shellcheck scripts/*.sh deploy/install.sh
+RESULT: exit 0; no diagnostics

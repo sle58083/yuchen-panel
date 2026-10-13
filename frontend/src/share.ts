@@ -129,7 +129,7 @@ function uniqueProxyNames(nodes: any[]): any[] {
     let name = base
     for (let i = 2; used.has(name); i++) name = `${base} #${i}`
     used.add(name)
-    return {...node, name}
+    return {...node, __safeName: name}
   })
 }
 
@@ -138,13 +138,20 @@ function nodeName(node: any): string {
 }
 
 function shortNodeId(node: any): string {
-  const raw = String(node?.id || node?.host || 'node').replace(/[^A-Za-z0-9]/g, '').toLowerCase()
+  // Backend nodeShareName derives the suffix from the persistent node ID;
+  // using host as a fallback would make empty-ID fixtures diverge.
+  const raw = String(node?.id || 'node').replace(/[^A-Za-z0-9]/g, '').toLowerCase()
   return (raw.slice(-4) || 'node').padStart(4, '0')
 }
 
-function safeName(node: any, client?: any): string {
-  const cn = client?.username ? `-${client.username}` : ''
-  return `${nodeName(node)} #${shortNodeId(node)}${cn}`.replace(/[\r\n]+/g, ' ').trim()
+function safeName(node: any, _client?: any): string {
+  // Keep the display name identical to backend nodeShareName. The client
+  // identity is already carried by the subscription/share token and must not
+  // make the same node look different across export formats.
+  const preferred = typeof node?.__safeName === 'string'
+    ? node.__safeName
+    : `${nodeName(node)} #${shortNodeId(node)}`
+  return preferred.replace(/[\r\n]+/g, ' ').trim()
 }
 
 // Userinfo must use RFC3986 percent encoding; URLSearchParams is for query values.

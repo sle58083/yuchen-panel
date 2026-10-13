@@ -1,0 +1,9 @@
+Environment: YC_ENV=test
+Panel URL: http://127.0.0.1:8088
+Guarded data path: /opt/yuchen-panel/data/yuchen-panel.json
+Output path: ./.audit/raw/task4/client-test-env
+Mode: dry-run
+Plan: inspect the test server; create/reuse uri-edge-case and six named nodes (VLESS TCP/Reality/gRPC/WS, VMess TCP, Trojan TCP).
+Node ports: 24401-24406. Verify that these ports are free and reachable before real connection tests.
+IPv6: unavailable; T2 IPv6 connection is SKIPPED: no IPv6 default route (::/0)
+DRY_RUN: no API calls, no output files, no clients or nodes created.

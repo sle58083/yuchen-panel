@@ -33,6 +33,17 @@ test('display names carry a reversible short node id',()=>{
  assert.equal(new Set(names).size,12)
 })
 
+test('display names do not vary with client username',()=>{
+ const sample={...node,id:'node-de00',name:'重复名称'}
+ const first=JSON.parse(share.buildSingBoxConfig([sample],{uuid:'a',username:'alice'}))
+ const second=JSON.parse(share.buildSingBoxConfig([sample],{uuid:'b',username:'bob'}))
+ const tag=config=>config.outbounds.find(out=>out.type==='vless')?.tag
+ assert.equal(tag(first), '重复名称 #de00')
+ assert.equal(tag(first), tag(second))
+ assert.equal(tag(first).includes('alice'), false)
+ assert.equal(tag(first).includes('bob'), false)
+})
+
 test('VMess network and default WS/gRPC transport parameters survive export',()=>{
  const client={uuid:'f9b77af1-736a-4f5b-8bc5-273ba9b552ea'}
  for(const transport of ['ws','grpc']) {

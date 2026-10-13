@@ -348,6 +348,14 @@ func TestMobileURIPasswordAndIPv6RoundTrip(t *testing.T) {
 	}
 }
 
+func TestNodeShareNameMatchesFrontendFixture(t *testing.T) {
+	// frontend/tests/share.test.mjs uses the same node fixture and expectation.
+	node := model.Node{ID: "node-de00", Name: "重复名称", Host: "192.0.2.1", Port: 24401}
+	if got, want := nodeShareName(node), "重复名称 #de00"; got != want {
+		t.Fatalf("nodeShareName = %q, want %q", got, want)
+	}
+}
+
 func TestSubscriptionNamesAreUniqueAndTraceable(t *testing.T) {
 	nodes := make([]model.Node, 12)
 	for i := range nodes {
