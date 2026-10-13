@@ -1,7 +1,13 @@
 FROM golang:1.23 AS builder
 WORKDIR /src
-COPY . .
-RUN go test ./... && go build -o /out/yuchen-panel-api ./cmd/server
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash curl jq python3 unzip \
+    && rm -rf /var/lib/apt/lists/*
+COPY backend/ ./backend/
+COPY install.sh ./install.sh
+WORKDIR /src/backend
+RUN env PATH=/usr/local/go/bin:/bin /usr/local/go/bin/go test -run '^TestSubscriptionFormatRouting$' ./internal/api
+RUN go test -v ./... && go build -o /out/yuchen-panel-api ./cmd/server
 
 FROM debian:bookworm-slim
 WORKDIR /app

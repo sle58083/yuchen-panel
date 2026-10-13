@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+
+permissions:
+  contents: read
+
+jobs:
+  go-test:
+    name: Go build, vet and race tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [backend, agent]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  docker-build:
+    name: Docker Compose builds
+    runs-on: ubuntu-latest
+    env:
+      YC_JWT_SECRET: ci-only-secret-with-at-least-32-characters
+      YC_ADMIN_USERNAME: ci-admin
+      YC_ADMIN_PASSWORD: ci-password-at-least-12
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build yuchen-panel-api
+      - run: docker compose build yuchen-panel-frontend
+
+  shell:
+    name: Shell syntax and ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+      - name: ShellCheck
+        shell: bash
+        run: shellcheck --severity=error scripts/*.sh deploy/*.sh install.sh
+      - name: Bash syntax
+        shell: bash
+        run: |
+          find scripts deploy -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          bash -n install.sh
+
+  frontend:
+    name: Frontend build and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --no-audit --no-fund --progress=false
+      - working-directory: frontend
+        run: npm run build
