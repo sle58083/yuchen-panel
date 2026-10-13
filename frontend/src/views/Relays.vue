@@ -279,6 +279,7 @@ function buildRelayVlessLink() {
     }
   }
   const suffix = routeMode(r) === 'socks5_route' ? 'SOCKS5路由中转' : 'TCP透传中转'
+  // This is a URI fragment label, not userinfo; strict userinfo encoding lives in share.ts.
   const label = encodeURIComponent(`${r.name}-${suffix}`)
   return `vless://${c.uuid}@${r.relay_host}:${Number(r.relay_port)}?${q.toString()}#${label}`
 }

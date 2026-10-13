@@ -546,7 +546,7 @@ print_result() {
 
 wait_api() {
   step "Waiting for API"
-  for i in $(seq 1 90); do
+  for _ in $(seq 1 90); do
     if curl -fsS "http://127.0.0.1:${API_PORT}/api/health" >/dev/null 2>&1; then
       echo "API is ready."
       return 0

@@ -311,15 +311,18 @@ func TestSingBoxDNSUsesModernSchema(t *testing.T) {
 }
 
 func TestMobileURIPasswordAndIPv6RoundTrip(t *testing.T) {
-	client := model.Client{UUID: fixtureUUID, Password: "p@ss w#rd&test=1"}
+	client := model.Client{UUID: fixtureUUID, Password: `&=+,'" /中文😀:@`}
 	node := model.Node{Protocol: "trojan", Host: "2001:db8::1", Port: 23456, Name: "测试 节点 #1", Transport: "grpc", Security: "tls"}
 	raw := buildNodeShareLink(node, client)
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Hostname() != node.Host || parsed.User.Username() != client.Password || parsed.Fragment != node.Name {
+	if parsed.Hostname() != node.Host || parsed.User.Username() != client.Password || parsed.Fragment != nodeShareName(node) {
 		t.Fatalf("round-trip failed: %s", raw)
+	}
+	if !strings.Contains(raw, "%26") || !strings.Contains(raw, "%3D") {
+		t.Fatal("userinfo was not strictly percent encoded")
 	}
 	if parsed.Query().Get("serviceName") != "yuchen" {
 		t.Fatal("gRPC default differs from core")
@@ -342,6 +345,46 @@ func TestMobileURIPasswordAndIPv6RoundTrip(t *testing.T) {
 	yaml := strings.Join(buildClashProxyLinesForNode(node, client), "\n")
 	if !strings.Contains(yaml, `network: "grpc"`) || !strings.Contains(yaml, `grpc-service-name: "yuchen"`) {
 		t.Fatal("Clash VMess gRPC transport omitted")
+	}
+}
+
+func TestSubscriptionNamesAreUniqueAndTraceable(t *testing.T) {
+	nodes := make([]model.Node, 12)
+	for i := range nodes {
+		nodes[i] = model.Node{ID: fmt.Sprintf("node-%02d", i), Name: "重复名称", Protocol: "vless", Host: "192.0.2.1", Port: 20000 + i, Enabled: true}
+	}
+	client := model.Client{UUID: fixtureUUID}
+	config := buildSingBoxSubscription(nodes, nil, client, model.NetworkPolicy{})
+	seen := map[string]bool{}
+	for _, raw := range config["outbounds"].([]any) {
+		out := raw.(map[string]any)
+		if out["type"] == "selector" || out["type"] == "direct" {
+			continue
+		}
+		tag := out["tag"].(string)
+		if seen[tag] {
+			t.Fatalf("duplicate tag %q", tag)
+		}
+		seen[tag] = true
+		matched := false
+		for _, node := range nodes {
+			short := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return -1
+			}, node.ID)
+			if len(short) > 4 {
+				short = short[len(short)-4:]
+			}
+			if strings.HasSuffix(tag, "#"+strings.ToLower(short)) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("tag not traceable: %s", tag)
+		}
 	}
 }
 

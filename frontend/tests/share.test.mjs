@@ -12,13 +12,25 @@ const share = module.exports
 const node = {id:'node',protocol:'vless',enabled:true,host:'example.com',port:23456,security:'none',transport:'tcp'}
 
 test('special password and IPv6 URI round-trip preserves endpoint and name',()=>{
- const client={uuid:'f9b77af1-736a-4f5b-8bc5-273ba9b552ea',password:'p@ss w#rd&test=1'}
+ const client={uuid:'f9b77af1-736a-4f5b-8bc5-273ba9b552ea',password:`&=+,\'" /中文😀:@`}
  const ipv6={...node,protocol:'trojan',host:'2001:db8::1',name:'测试 节点 #1',security:'tls'}
  const parsed=new URL(share.buildTrojanLink(ipv6,client))
  assert.equal(parsed.hostname,'[2001:db8::1]')
  assert.equal(decodeURIComponent(parsed.username),client.password)
- assert.equal(decodeURIComponent(parsed.hash.slice(1)),ipv6.name)
+ assert.equal(decodeURIComponent(parsed.hash.slice(1)),`${ipv6.name} #${ipv6.id}`)
  assert.equal(new URL(share.buildVlessLink({...ipv6,protocol:'vless'},client)).hostname,'[2001:db8::1]')
+})
+
+test('display names carry a reversible short node id',()=>{
+ const client={uuid:'f9b77af1-736a-4f5b-8bc5-273ba9b552ea'}
+ const nodes=Array.from({length:12},(_,i)=>({...node,id:`node-${i.toString().padStart(2,'0')}`,name:'重复名称'}))
+ const config=JSON.parse(share.buildSingBoxConfig(nodes,client))
+ const tags=config.outbounds.filter(o=>o.type!=='selector'&&o.type!=='direct').map(o=>o.tag)
+ assert.equal(new Set(tags).size,12)
+ nodes.forEach(n=>assert.equal(tags.some(tag=>tag.endsWith(`#${n.id.replace(/[^A-Za-z0-9]/g,'').slice(-4)}`)),true))
+ const yaml=share.buildClashMetaConfig(nodes,client)
+ const names=[...yaml.matchAll(/^  - name: "([^"]+)"$/gm)].map(m=>m[1])
+ assert.equal(new Set(names).size,12)
 })
 
 test('VMess network and default WS/gRPC transport parameters survive export',()=>{
