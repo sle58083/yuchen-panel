@@ -371,6 +371,41 @@ func TestNodeShareNameMatchesFrontendFixture(t *testing.T) {
 	}
 }
 
+func TestDisplayNameHasOneShortIDSuffixAcrossFormats(t *testing.T) {
+	node := model.Node{ID: "node-de00", Name: "重复名称", Protocol: "vless", Host: "192.0.2.1", Port: 24401, Transport: "tcp", Security: "none", Enabled: true}
+	client := model.Client{UUID: fixtureUUID, Password: "password"}
+	want := "重复名称 #de00"
+	if got := nodeShareName(node); got != want || strings.Count(got, "#de00") != 1 {
+		t.Fatalf("node name = %q, want one %q suffix", got, want)
+	}
+	config := buildSingBoxSubscription([]model.Node{node}, nil, client, model.NetworkPolicy{})
+	for _, raw := range config["outbounds"].([]any) {
+		out := raw.(map[string]any)
+		if out["type"] == "vless" && out["tag"] != want {
+			t.Fatalf("sing-box tag = %q, want %q", out["tag"], want)
+		}
+	}
+	clash := strings.Join(buildClashProxyLinesForNode(node, client), "\n")
+	if strings.Count(clash, want) != 1 {
+		t.Fatalf("Clash name count = %d in %q", strings.Count(clash, want), clash)
+	}
+	link := buildNodeShareLink(node, client)
+	parsed, err := url.Parse(link)
+	if err != nil || parsed.Fragment != want || strings.Count(parsed.Fragment, "#") != 1 {
+		t.Fatalf("share fragment = %q, want %q", parsed.Fragment, want)
+	}
+	node.Protocol = "vmess"
+	encoded := strings.TrimPrefix(buildNodeShareLink(node, client), "vmess://")
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vmess map[string]any
+	if err := json.Unmarshal(decoded, &vmess); err != nil || vmess["ps"] != want {
+		t.Fatalf("v2rayN ps = %v, want %q", vmess["ps"], want)
+	}
+}
+
 func TestSubscriptionNamesAreUniqueAndTraceable(t *testing.T) {
 	nodes := make([]model.Node, 12)
 	for i := range nodes {

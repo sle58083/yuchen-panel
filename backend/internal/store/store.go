@@ -15,6 +15,7 @@ import (
 
 	"yuchen-panel/backend/internal/model"
 	"yuchen-panel/backend/internal/security"
+	"yuchen-panel/backend/internal/version"
 )
 
 type Store struct {
@@ -78,7 +79,7 @@ func (s *Store) loadOrInit() error {
 
 func newData() model.PanelData {
 	return model.PanelData{
-		Version:       "0.7.7.1-clash-import-polish-agent-xray",
+		Version:       version.Version,
 		Admins:        map[string]model.AdminUser{},
 		Servers:       map[string]model.Server{},
 		Nodes:         map[string]model.Node{},
@@ -121,7 +122,7 @@ func normalize(d *model.PanelData) {
 			d.Admins[id] = a
 		}
 	}
-	d.Version = "0.7.7.1-clash-import-polish-agent-xray"
+	d.Version = version.Version
 }
 
 func defaultNetworkPolicy() model.NetworkPolicy {
@@ -308,7 +309,7 @@ func shouldReplaceLocalEndpoint(current, target string) bool {
 func pickLocalServer(list []model.Server) model.Server {
 	keep := list[0]
 	for _, srv := range list[1:] {
-		if srv.AgentVersion == "0.7.7.1-clash-import-polish-agent-xray" && keep.AgentVersion != "0.7.7.1-clash-import-polish-agent-xray" {
+		if srv.AgentVersion == version.Version && keep.AgentVersion != version.Version {
 			keep = srv
 			continue
 		}

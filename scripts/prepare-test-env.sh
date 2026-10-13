@@ -154,6 +154,7 @@ edge_password="&=+,'\" /中文😀:@"
 node_ids=()
 resources="$tmp/resources.jsonl"
 : > "$resources"
+printf '%s' "$edge_password" > "$tmp/expected-password.txt"
 
 create_node() {
   local name=$1 protocol=$2 transport=$3 security=$4 host=$5 port=$6
@@ -214,6 +215,9 @@ else
 fi
 [[ -n $client_id && -n $client_token ]] || { echo 'Client creation/update returned no id or subscription token.' >&2; exit 1; }
 printf 'CLIENT_%s: uri-edge-case (%s)\n' "${client_state^^}" "$client_id"
+client_record=$(api_get "$api/clients/$client_id")
+stored_password=$(jq -r '.password // empty' <<<"$client_record")
+[[ -n $stored_password ]] || { echo 'Client API returned an empty password.' >&2; exit 1; }
 
 sample_dir=$(mktemp -d "$output_dir/samples.XXXXXXXX")
 bash "$script_dir/verify-clients.sh" "$panel_url/sub/$client_token" "$sample_dir"
@@ -223,7 +227,8 @@ jq -e '[.outbounds[].tag] as $tags | (($tags | length) == ($tags | unique | leng
 clash_names="$tmp/clash-names"
 awk '/^  - name: / {sub(/^  - name: /, ""); print}' "$sample_dir/clash.yaml" > "$clash_names"
 [[ -s $clash_names && $(wc -l < "$clash_names") -eq $(sort -u "$clash_names" | wc -l) ]] || { echo 'Clash names are empty or duplicate.' >&2; exit 1; }
-export EXPECTED_PASSWORD=$edge_password
+export EXPECTED_PASSWORD=$(cat "$tmp/expected-password.txt")
+export STORED_PASSWORD=$stored_password
 python3 - "$sample_dir/single-node-links.txt" <<'PY'
 import os
 import pathlib
@@ -234,8 +239,13 @@ lines = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 trojan = [line for line in lines if line.startswith('trojan://')]
 if len(trojan) != 1:
     raise SystemExit(f'expected one Trojan URI, found {len(trojan)}')
-if unquote(urlsplit(trojan[0]).username or '') != os.environ['EXPECTED_PASSWORD']:
+parsed_password = unquote(urlsplit(trojan[0]).username or '')
+if parsed_password != os.environ['EXPECTED_PASSWORD']:
     raise SystemExit('Trojan password round trip failed')
+if os.environ['STORED_PASSWORD'] != os.environ['EXPECTED_PASSWORD']:
+    raise SystemExit('API stored password differs from independent expected password')
+if parsed_password != os.environ['STORED_PASSWORD']:
+    raise SystemExit('Trojan link password differs from API stored password')
 if any(line.startswith('ss://') for line in lines):
     raise SystemExit('SS URI found')
 PY

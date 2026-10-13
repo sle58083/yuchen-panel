@@ -726,6 +726,13 @@ main() {
       echo "ERROR: docker compose plugin or docker-compose is required but was not installed successfully."
       exit 1
     fi
+    # Docker mode builds the API/frontend images only. The Agent is a host
+    # systemd service and needs a separately supplied Linux binary; silently
+    # attempting a source build on a clean host makes the install fail late.
+    if [[ "$AUTO_AGENT" == "true" ]]; then
+      echo "Docker mode: skipping Agent installation. Deploy yuchen-agent separately before B-tier node connectivity tests."
+      AUTO_AGENT=false
+    fi
   fi
 
   PUBLIC_IP=${YC_LOCAL_SERVER_IP:-$(public_ip)}

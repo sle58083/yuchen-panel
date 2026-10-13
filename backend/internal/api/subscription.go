@@ -178,7 +178,12 @@ func nodeShareName(n model.Node) string {
 		shortID = "node"
 	}
 	if strings.TrimSpace(n.Name) != "" {
-		return fmt.Sprintf("%s #%s", strings.TrimSpace(n.Name), strings.ToLower(shortID))
+		name := strings.TrimSpace(n.Name)
+		suffix := " #" + strings.ToLower(shortID)
+		if strings.HasSuffix(name, suffix) {
+			return name
+		}
+		return name + suffix
 	}
 	return fmt.Sprintf("%s:%d #%s", nodeHost(n), n.Port, strings.ToLower(shortID))
 }

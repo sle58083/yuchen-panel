@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const version = "0.7.7.1-clash-import-polish-agent-xray"
+const version = "1.0.2"
 
 type Heartbeat struct {
 	ServerID      string  `json:"server_id"`

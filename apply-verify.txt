@@ -1,0 +1,25 @@
+Environment: YC_ENV=test
+Panel URL: http://127.0.0.1:18090
+Guarded data path: /opt/yuchen-panel/data/yuchen-panel.json
+Output path: /tmp/tmp.74YqFKQ1LA/out
+Mode: apply
+Plan: inspect the test server; create/reuse uri-edge-case and six named nodes (VLESS TCP/Reality/gRPC/WS, VMess TCP, Trojan TCP).
+Node ports: 24401-24406. Verify that these ports are free and reachable before real connection tests.
+IPv6: unavailable; T2 IPv6 connection is SKIPPED: no IPv6 default route (::/0)
+Selected server: id=srv_1791900513761521411_6e48cf6c, test-machine IPv4=10.0.0.1. Use TEST_NODE_HOST to override before --apply if this is wrong.
+Warning: this branch does not configure TLS certificates for TLS inbounds; Trojan/WS/gRPC connection checks may fail. Use only an isolated test machine.
+NODE_CREATED: uri-edge-vless-tcp (node_1791900514260115079_98beb965)
+NODE_CREATED: uri-edge-vless-reality (node_1791900514309744706_8227615c)
+NODE_CREATED: uri-edge-vless-grpc (node_1791900514344497425_77ac0843)
+NODE_CREATED: uri-edge-vless-ws (node_1791900514387417748_3bb2001b)
+NODE_CREATED: uri-edge-vmess (node_1791900514425498868_b482d7a1)
+NODE_CREATED: uri-edge-trojan (node_1791900514461537688_24ce9d5b)
+CLIENT_CREATED: uri-edge-case (cli_1791900514499462308_007bfbd6)
+Downloaded URI count: 6
+Clash YAML bytes: 2411
+Samples: /tmp/tmp.74YqFKQ1LA/out/samples.uO15bpeN
+Files generated. sing-box check and T1–T6 device tests remain for the operator.
+SELF_CHECK_PASS: modern DNS, unique sing-box tags and Clash names, Trojan password, no SS URI.
+APPLY_COMPLETE: resources=6 nodes + 1 client
+TEST_ENV: /tmp/tmp.74YqFKQ1LA/out/TEST-ENV.json
+TASK6_APPLY_SMOKE_PASS: independent password baseline, API password and Trojan URI checks passed

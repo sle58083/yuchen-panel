@@ -26,6 +26,8 @@ curl -fsS http://127.0.0.1:8088/api/health
 
 `deploy/install.sh` 的 Docker 模式从当前检出的源码构建 API 和前端。不要运行 `bash <(curl -Ls .../install.sh)`：仓库根目录安装器会读取该分支的 `version.json`，其 `download_url` 仍指向旧版 GitHub Release ZIP，因此即使脚本 URL 是 PR 分支，也**不会**安装 PR 代码。也不要把此测试分支当作稳定版发布。
 
+Docker 模式明确跳过宿主机 Agent 安装。Agent 需要单独提供与测试机架构匹配的 `bin/yuchen-agent-linux-amd64` 后执行 `deploy/agent-install.sh`；在 Agent 部署前，T2/T4/T5 的 B 档节点连通测试不可用。安装输出会明确打印这条提示，不能把 API/前端容器启动当作代理节点已就绪。
+
 保存安装输出中的 `ACCESS_URL`、面板管理员账号与密码。`panel.info` 的 `API_TOKEN` 是 **Agent 共享密钥**，不是下文 `YC_TOKEN` 所需的管理员登录 JWT。不要在回贴日志中包含两种令牌或密码。
 
 面板默认 HTTP 明文。关闭安全组里的面板端口公网入口，在操作电脑上建立 SSH 隧道访问 UI：
