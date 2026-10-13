@@ -1,0 +1,16 @@
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.12.0 check -c /c.json file=modern version=1.12.0
+EXIT_CODE: 0
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.12.0 check -c /c.json file=legacy version=1.12.0
+[33mWARN[0m[0000] legacy DNS servers is deprecated in sing-box 1.12.0 and will be removed in sing-box 1.14.0, checkout documentation for migration: https://sing-box.sagernet.org/migration/#migrate-to-new-dns-server-formats
+EXIT_CODE: 0
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.13.0 check -c /c.json file=modern version=1.13.0
+EXIT_CODE: 0
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.13.0 check -c /c.json file=legacy version=1.13.0
+[31mERROR[0m[0000] legacy DNS servers is deprecated in sing-box 1.12.0 and will be removed in sing-box 1.14.0, checkout documentation for migration: https://sing-box.sagernet.org/migration/#migrate-to-new-dns-server-formats
+[31mFATAL[0m[0000] to continuing using this feature, set environment variable ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true
+EXIT_CODE: 1
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.14.2 check -c /c.json file=modern version=1.14.2
+EXIT_CODE: 0
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.14.2 check -c /c.json file=legacy version=1.14.2
+[31mFATAL[0m[0000] decode config at /c.json: dns.servers[0]: legacy DNS server formats are deprecated in sing-box 1.12.0 and removed in sing-box 1.14.0, checkout migration: https://sing-box.sagernet.org/migration/#migrate-to-new-dns-server-formats
+EXIT_CODE: 1

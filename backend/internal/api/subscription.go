@@ -165,10 +165,22 @@ func nodeHost(n model.Node) string {
 }
 
 func nodeShareName(n model.Node) string {
-	if strings.TrimSpace(n.Name) != "" {
-		return strings.TrimSpace(n.Name)
+	shortID := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, n.ID)
+	if len(shortID) > 4 {
+		shortID = shortID[len(shortID)-4:]
 	}
-	return fmt.Sprintf("%s:%d", nodeHost(n), n.Port)
+	if shortID == "" {
+		shortID = "node"
+	}
+	if strings.TrimSpace(n.Name) != "" {
+		return fmt.Sprintf("%s #%s", strings.TrimSpace(n.Name), strings.ToLower(shortID))
+	}
+	return fmt.Sprintf("%s:%d #%s", nodeHost(n), n.Port, strings.ToLower(shortID))
 }
 
 func relayShareName(r model.RelayRoute) string {
@@ -317,7 +329,7 @@ func buildVlessShareLink(n model.Node, client model.Client) string {
 	if strings.ToLower(n.Transport) == "grpc" {
 		q.Set("serviceName", grpcService(n.Path))
 	}
-	return (&url.URL{Scheme: "vless", User: url.User(client.UUID), Host: net.JoinHostPort(strings.Trim(host, "[]"), strconv.Itoa(n.Port)), RawQuery: q.Encode(), Fragment: n.Name}).String()
+	return buildUserInfoLink("vless", client.UUID, net.JoinHostPort(strings.Trim(host, "[]"), strconv.Itoa(n.Port)), q.Encode(), nodeShareName(n))
 }
 
 func buildRelayShareLink(r model.RelayRoute, client model.Client) string {
@@ -336,7 +348,7 @@ func buildRelayShareLink(r model.RelayRoute, client model.Client) string {
 	}
 	q.Set("spx", valueOr(r.RelayRealitySpiderX, "/"))
 	q.Set("type", "tcp")
-	return (&url.URL{Scheme: "vless", User: url.User(client.UUID), Host: net.JoinHostPort(strings.Trim(valueOr(r.RelayHost, "127.0.0.1"), "[]"), strconv.Itoa(r.RelayPort)), RawQuery: q.Encode(), Fragment: r.Name}).String()
+	return buildUserInfoLink("vless", client.UUID, net.JoinHostPort(strings.Trim(valueOr(r.RelayHost, "127.0.0.1"), "[]"), strconv.Itoa(r.RelayPort)), q.Encode(), r.Name)
 }
 
 func valueOr(v, fallback string) string {
@@ -412,7 +424,25 @@ func buildTrojanShareLink(n model.Node, client model.Client) string {
 	if transport == "grpc" {
 		q.Set("serviceName", grpcService(n.Path))
 	}
-	return (&url.URL{Scheme: "trojan", User: url.User(xray.TrojanClientPassword(client)), Host: net.JoinHostPort(strings.Trim(nodeHost(n), "[]"), strconv.Itoa(n.Port)), RawQuery: q.Encode(), Fragment: nodeShareName(n)}).String()
+	return buildUserInfoLink("trojan", xray.TrojanClientPassword(client), net.JoinHostPort(strings.Trim(nodeHost(n), "[]"), strconv.Itoa(n.Port)), q.Encode(), nodeShareName(n))
+}
+
+// buildUserInfoLink applies the same RFC3986 encoder as the browser userinfo
+// helper. Only unreserved bytes remain literal; this prevents &, =, +, comma,
+// quotes and other delimiters from changing URI parsing semantics.
+func buildUserInfoLink(scheme, user, host, rawQuery, fragment string) string {
+	encoded := make([]byte, 0, len(user))
+	const hex = "0123456789ABCDEF"
+	for _, b := range []byte(user) {
+		if b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.ContainsRune("-_.~", rune(b)) {
+			encoded = append(encoded, b)
+		} else {
+			encoded = append(encoded, '%', hex[b>>4], hex[b&15])
+		}
+	}
+	u := &url.URL{Scheme: scheme, Host: host, RawQuery: rawQuery, Fragment: fragment}
+	base := u.String()
+	return strings.Replace(base, scheme+"://", scheme+"://"+string(encoded)+"@", 1)
 }
 
 // buildClashProxyLinesForNode 按协议生成 Clash Meta / Mihomo proxies 段。

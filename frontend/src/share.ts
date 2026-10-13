@@ -65,6 +65,7 @@ function appBasePath(): string {
 }
 
 export function buildSubscriptionUrl(client: any, format: SubscriptionFormat = 'auto', vpn = false): string {
+  // These values are path/query components, not userinfo; encodeURIComponent is correct here.
   const base = `${location.origin}${appBasePath()}sub/${encodeURIComponent(client.subscribe_token)}`
   return format === 'auto' ? base : `${base}?format=${encodeURIComponent(format)}${format === 'singbox' && vpn ? '&profile=tun' : ''}`
 }
@@ -136,9 +137,19 @@ function nodeName(node: any): string {
   return valueOr(node.name || node.remark, `${nodeHost(node)}:${Number(node.port || 443)}`)
 }
 
+function shortNodeId(node: any): string {
+  const raw = String(node?.id || node?.host || 'node').replace(/[^A-Za-z0-9]/g, '').toLowerCase()
+  return (raw.slice(-4) || 'node').padStart(4, '0')
+}
+
 function safeName(node: any, client?: any): string {
   const cn = client?.username ? `-${client.username}` : ''
-  return `${nodeName(node)}${cn}`.replace(/[\r\n]+/g, ' ').trim()
+  return `${nodeName(node)} #${shortNodeId(node)}${cn}`.replace(/[\r\n]+/g, ' ').trim()
+}
+
+// Userinfo must use RFC3986 percent encoding; URLSearchParams is for query values.
+function encodeUserInfo(v: string): string {
+  return encodeURIComponent(v).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
 }
 
 function isReality(node: any): boolean {
@@ -177,7 +188,7 @@ export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shado
   q.set('type', transport)
   if (transport === 'ws') q.set('path', valueOr(node.path, '/yuchen'))
   if (transport === 'grpc') q.set('serviceName', valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen'))
-  const label = encodeURIComponent(nodeName(node))
+  const label = encodeURIComponent(safeName(node))
   return `vless://${client.uuid}@${host}:${port}?${q.toString()}#${label}`
 }
 
@@ -234,8 +245,8 @@ export function buildTrojanLink(node: any, client: any): string {
   q.set('type', transport)
   if (transport === 'ws') q.set('path', valueOr(node.path, '/yuchen'))
   if (transport === 'grpc') q.set('serviceName', valueOr(String(node.path || '').replace(/^\/+|\/+$/g, ''), 'yuchen'))
-  const label = encodeURIComponent(nodeName(node))
-  const password = encodeURIComponent(String(client.password || client.uuid || ''))
+  const label = encodeURIComponent(safeName(node))
+  const password = encodeUserInfo(String(client.password || client.uuid || ''))
   return `trojan://${password}@${host}:${port}?${q.toString()}#${label}`
 }
 
