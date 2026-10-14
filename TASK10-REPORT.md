@@ -47,3 +47,31 @@ Task 8 的 BUG-K/BUG-L/C22 预检、包名候选与提前退出逻辑未改动�
 - serverSpecAdvice 的容量提示依赖新版 Agent；旧 Agent 不上报时提示不出现。
 
 未合并 main、未打 tag、未触发 Release。
+
+## CI 完成后的实际证据
+
+[CI run 38539618752](https://github.com/sle58083/yuchen-panel/actions/runs/38539618752) 六个 job 全部 success。代码 head `23c5e02`；Ubuntu 22.04 从 PR 源码构建 API/前端，保留 Docker 安装八项断言全部 PASS，新增 Nginx 检查也全部 PASS。
+
+隔离 Nginx 对旧宿主路由结构的实际日志：
+
+```text
+open() "/etc/nginx/html/api/health" failed (2: No such file or directory)
+404 uri=/api/health upstream=-
+```
+
+该文件路径来自隔离 Alpine Nginx 的默认静态根，并非冒充协调者原服务器日志。它确认请求没有转发到任何 upstream，从而验证模板缺根 API 路由的根因。
+
+修复后实际返回：
+
+```text
+NGINX_PASS: Docker host root API HTTP=200 {"service":"yuchen-panel-api","status":"ok","version":"1.0.2"}
+NGINX_PASS: Docker host prefixed API HTTP=200 {"service":"yuchen-panel-api","status":"ok","version":"1.0.2"}
+NGINX_PASS: fast template root API HTTP=200 {"service":"yuchen-panel-api","status":"ok","version":"1.0.2"}
+NGINX_PASS: fast template prefixed API HTTP=200 {"service":"yuchen-panel-api","status":"ok","version":"1.0.2"}
+```
+
+完整检查点输出提取见 `task10-proxy-result.txt`；密钥提示和 Doctor 的实际 shell 回归输出见 `task10-notice-doctor-result.txt`（Doctor 服务命令是明确标注的 mock，不是伪造真机服务状态）。前端页面 200、无效 sub/share token 正确到 API、七条 C24 用例和前端 11 项测试均由该 CI 验证通过。
+
+[完整安装日志及 proxy 输出 artifact](https://github.com/sle58083/yuchen-panel/actions/runs/38539618752/artifacts/11881612138)，ZIP SHA256 `3ce44f0d6f1e9330ef8109452627b73f2a6f3826cc666aa7974c1393e527118a`。API source image：`sha256:e677ec02f9eec8b5284b8809289a9f4f61a9c9656e530c6f5ce774f64613cd5b`。
+
+这些是实际源码 CI 结果；生产机器的升级重装、Nginx/systemd 写入和设备连通仍需真机复验。后续仅补报告，不修改已通过 CI 的代码。
