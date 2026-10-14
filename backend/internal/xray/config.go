@@ -230,7 +230,24 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 		}
 	}
 	applyNetworkPolicy(&rules, policy)
+	// Keep the StatsService strictly local and route it before all policy rules.
+	statsPort := 10000
+	usedPorts := map[int]bool{}
+	for _, n := range nodes {
+		usedPorts[n.Port] = true
+	}
+	for _, rr := range relayRoutes {
+		usedPorts[rr.RelayPort] = true
+	}
+	for usedPorts[statsPort] {
+		statsPort++
+	}
+	inbounds = append(inbounds, map[string]any{"listen": "127.0.0.1", "port": statsPort, "protocol": "dokodemo-door", "settings": map[string]any{"address": "127.0.0.1"}, "tag": "api"})
+	rules = append([]any{map[string]any{"type": "field", "inboundTag": []string{"api"}, "outboundTag": "api"}}, rules...)
 	cfg := map[string]any{
+		"stats":     map[string]any{},
+		"policy":    map[string]any{"levels": map[string]any{"0": map[string]any{"statsUserUplink": true, "statsUserDownlink": true}}},
+		"api":       map[string]any{"tag": "api", "services": []string{"StatsService"}},
 		"log":       map[string]any{"loglevel": "warning"},
 		"inbounds":  inbounds,
 		"outbounds": outbounds,
@@ -251,7 +268,7 @@ func makeRelayVlessClients(clients []model.Client, relayID string) []map[string]
 		// V0.7.5：固定出口中转线路只写入显式绑定该线路的客户 UUID。
 		// 不再把未绑定 relay_route_ids 的旧客户自动塞进中转入口，避免多个出口串线或误用。
 		if contains(c.RelayRouteIDs, relayID) {
-			boundClients = append(boundClients, map[string]any{"id": c.UUID, "email": c.Username, "flow": ""})
+			boundClients = append(boundClients, map[string]any{"id": c.UUID, "email": "client_" + c.ID, "level": 0, "flow": ""})
 		}
 	}
 	sort.SliceStable(boundClients, func(i, j int) bool {
@@ -272,7 +289,7 @@ func makeInboundClients(clients []model.Client, nodeID string, protocol string) 
 		if !model.AllowedNodes(c)[nodeID] {
 			continue
 		}
-		email := c.Username
+		email := "client_" + c.ID
 		switch protocol {
 		case "trojan":
 			boundClients = append(boundClients, map[string]any{"password": TrojanClientPassword(c), "email": email})
