@@ -1,12 +1,12 @@
 {
-  "latest": "1.0.3-rc.1",
-  "version": "1.0.3-rc.1",
+  "latest": "1.0.3-rc.2",
+  "version": "1.0.3-rc.2",
   "codename": "rc",
-  "package": "yuchen-panel-v1.0.3-rc.1.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.1/yuchen-panel-v1.0.3-rc.1.zip",
-  "sha256": "f4b97180e4b7102757974fd773a1beb5067c9c896c734a219084394543af8530",
+  "package": "yuchen-panel-v1.0.3-rc.2.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.2/yuchen-panel-v1.0.3-rc.2.zip",
+  "sha256": "91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-10-14T10:16:19.811084Z",
+  "released_at": "2026-10-14T16:45:22.871404Z",
   "changelog": [
     "审计修复 RC：认证、升级与安装路径安全修复",
     "sing-box/v2rayN/Clash/Shadowrocket 客户端兼容",
