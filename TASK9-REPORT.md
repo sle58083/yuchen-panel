@@ -66,3 +66,13 @@ Task 8 的 deploy/install.sh、Compose 文件、BUG-K/BUG-L/C22/C25 脚本未修
 2. 版本格式：VERSION 文件为发行标识 `1.0.2-stable`；API/Go/比较使用 `1.0.2`；panel.info 分写 VERSION=1.0.2、CHANNEL=stable。已明确统一语义，未强求发行标识与语义版本逐字一致。
 
 未合并 main、未打 tag、未触发发布。
+
+## CI 实际复验结果
+
+[CI run 38534346317](https://github.com/sle58083/yuchen-panel/actions/runs/38534346317) 六个 job 全部 success，包括前端 11 项测试、前后端 Docker 构建、backend/agent build/vet/race、Shell 检查和 Ubuntu 22.04 完整隔离安装。
+
+代码提交 `8bebf1e`；CI 使用该 PR 的源码合并检查产物构建 API，八个安装断言全部 PASS，包括 JWT 容器环境与真实 .env 逐字节一致。实际输出见 `task9-e2e-result.txt`；API image 为 `sha256:45eaebd82707d762ab24b995f4a37ab18068c654d1ba29acf08c5a09af9e0565`。
+
+[完整安装日志 artifact](https://github.com/sle58083/yuchen-panel/actions/runs/38534346317/artifacts/11879841731)，ZIP SHA256：`b550cf8d4aa087cea66dd76f3f0fb3b4c11226e471fab0aa13acce09885a1487`。没有触碰真实 /opt/yuchen-panel、/etc/yuchen-panel，没有用旧 Release 二进制替代源码验证。
+
+CI 安装验证仍不证明跨国线路测速、设备连接或新版 Agent 的真机规格提示；这些由用户真机复验。Task 8 预装 Compose v2 的包安装覆盖限制继续保留。
