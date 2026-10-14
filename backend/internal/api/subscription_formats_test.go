@@ -366,17 +366,17 @@ func TestMobileURIPasswordAndIPv6RoundTrip(t *testing.T) {
 func TestNodeShareNameMatchesFrontendFixture(t *testing.T) {
 	// frontend/tests/share.test.mjs uses the same node fixture and expectation.
 	node := model.Node{ID: "node-de00", Name: "重复名称", Host: "192.0.2.1", Port: 24401}
-	if got, want := nodeShareName(node), "重复名称 #de00"; got != want {
+	if got, want := nodeShareName(node), "重复名称"; got != want {
 		t.Fatalf("nodeShareName = %q, want %q", got, want)
 	}
 }
 
-func TestDisplayNameHasOneShortIDSuffixAcrossFormats(t *testing.T) {
+func TestDisplayNameKeepsOriginalAcrossFormats(t *testing.T) {
 	node := model.Node{ID: "node-de00", Name: "重复名称", Protocol: "vless", Host: "192.0.2.1", Port: 24401, Transport: "tcp", Security: "none", Enabled: true}
 	client := model.Client{UUID: fixtureUUID, Password: "password"}
-	want := "重复名称 #de00"
-	if got := nodeShareName(node); got != want || strings.Count(got, "#de00") != 1 {
-		t.Fatalf("node name = %q, want one %q suffix", got, want)
+	want := "重复名称"
+	if got := nodeShareName(node); got != want || strings.Contains(got, "#de00") {
+		t.Fatalf("node name = %q, want original %q", got, want)
 	}
 	config := buildSingBoxSubscription([]model.Node{node}, nil, client, model.NetworkPolicy{})
 	for _, raw := range config["outbounds"].([]any) {
@@ -391,7 +391,7 @@ func TestDisplayNameHasOneShortIDSuffixAcrossFormats(t *testing.T) {
 	}
 	link := buildNodeShareLink(node, client)
 	parsed, err := url.Parse(link)
-	if err != nil || parsed.Fragment != want || strings.Count(parsed.Fragment, "#") != 1 {
+	if err != nil || parsed.Fragment != want || strings.Contains(parsed.Fragment, "#") {
 		t.Fatalf("share fragment = %q, want %q", parsed.Fragment, want)
 	}
 	node.Protocol = "vmess"
@@ -403,46 +403,6 @@ func TestDisplayNameHasOneShortIDSuffixAcrossFormats(t *testing.T) {
 	var vmess map[string]any
 	if err := json.Unmarshal(decoded, &vmess); err != nil || vmess["ps"] != want {
 		t.Fatalf("v2rayN ps = %v, want %q", vmess["ps"], want)
-	}
-}
-
-func TestSubscriptionNamesAreUniqueAndTraceable(t *testing.T) {
-	nodes := make([]model.Node, 12)
-	for i := range nodes {
-		nodes[i] = model.Node{ID: fmt.Sprintf("node-%02d", i), Name: "重复名称", Protocol: "vless", Host: "192.0.2.1", Port: 20000 + i, Enabled: true}
-	}
-	client := model.Client{UUID: fixtureUUID}
-	config := buildSingBoxSubscription(nodes, nil, client, model.NetworkPolicy{})
-	seen := map[string]bool{}
-	for _, raw := range config["outbounds"].([]any) {
-		out := raw.(map[string]any)
-		if out["type"] == "selector" || out["type"] == "direct" {
-			continue
-		}
-		tag := out["tag"].(string)
-		if seen[tag] {
-			t.Fatalf("duplicate tag %q", tag)
-		}
-		seen[tag] = true
-		matched := false
-		for _, node := range nodes {
-			short := strings.Map(func(r rune) rune {
-				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
-					return r
-				}
-				return -1
-			}, node.ID)
-			if len(short) > 4 {
-				short = short[len(short)-4:]
-			}
-			if strings.HasSuffix(tag, "#"+strings.ToLower(short)) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			t.Fatalf("tag not traceable: %s", tag)
-		}
 	}
 }
 

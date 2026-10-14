@@ -165,27 +165,10 @@ func nodeHost(n model.Node) string {
 }
 
 func nodeShareName(n model.Node) string {
-	shortID := strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
-			return r
-		}
-		return -1
-	}, n.ID)
-	if len(shortID) > 4 {
-		shortID = shortID[len(shortID)-4:]
+	if name := strings.TrimSpace(n.Name); name != "" {
+		return name
 	}
-	if shortID == "" {
-		shortID = "node"
-	}
-	if strings.TrimSpace(n.Name) != "" {
-		name := strings.TrimSpace(n.Name)
-		suffix := " #" + strings.ToLower(shortID)
-		if strings.HasSuffix(name, suffix) {
-			return name
-		}
-		return name + suffix
-	}
-	return fmt.Sprintf("%s:%d #%s", nodeHost(n), n.Port, strings.ToLower(shortID))
+	return fmt.Sprintf("%s:%d", nodeHost(n), n.Port)
 }
 
 func relayShareName(r model.RelayRoute) string {
