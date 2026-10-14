@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="$(cut -d- -f1 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION" 2>/dev/null || echo 1.0.2)"
-CHANNEL="$(cut -s -d- -f2- "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION")"
+RELEASE_ID="$(tr -d '\r\n' < "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION")"
+VERSION=${RELEASE_ID%-stable}
+CHANNEL=stable
+if [[ "$VERSION" == *-* ]]; then CHANNEL=${VERSION#*-}; CHANNEL=${CHANNEL%%.*}; fi
+
 # APP_DIR owns runtime files and the real .env; SRC_DIR owns source/build files.
 APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}

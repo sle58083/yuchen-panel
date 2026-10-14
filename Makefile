@@ -13,7 +13,7 @@ test:
 docker:
 	docker compose up -d --build
 
-AGENT_VERSION := $(shell cut -d- -f1 VERSION)
+AGENT_VERSION := $(shell sed 's/-stable$//' VERSION)
 .PHONY: build-agent
 build-agent:
 	cd agent && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(AGENT_VERSION)" -o ../bin/yuchen-agent-linux-amd64 ./cmd/agent

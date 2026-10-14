@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
+import { RELEASE_VERSION } from '../version'
 import { copyText } from '../clipboard'
 const servers = ref<any[]>([])
 const form = ref<any>({ name:'', ip:'', host:'', region:'US', provider:'' })
 const error = ref('')
 const message = ref('')
 const selectedInstall = ref('')
-const PACKAGE_NAME = 'yuchen-panel-v1.0.2-clash-import-polish.zip'
-const PACKAGE_DIR = 'yuchen-panel-v1.0.2-clash-import-polish'
+const PACKAGE_DIR = `yuchen-panel-v${RELEASE_VERSION}`
+const PACKAGE_NAME = `${PACKAGE_DIR}.zip`
 
 function publicPanelBase() {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
@@ -47,7 +48,7 @@ onMounted(load)
   <div class="page-head">
     <div>
       <h1 class="page-title">高级：服务器管理</h1>
-      <p class="page-desc">V1.0.2 多服务器模式：本机服务器可作为主控/落地服务器，远程服务器复制一键命令后只安装 Agent 接入。</p>
+      <p class="page-desc">多服务器模式：本机服务器可作为主控/落地服务器，远程服务器复制一键命令后只安装 Agent 接入。</p>
     </div>
   </div>
   <div class="form">

@@ -90,7 +90,7 @@ if [[ -z "$BIN_SRC" ]]; then
   fi
   BIN_SRC="$ROOT_DIR/bin/yuchen-agent-linux-amd64"
   mkdir -p "$ROOT_DIR/bin"
-  (cd "$ROOT_DIR/agent" && AGENT_VERSION="$(cut -d- -f1 "$ROOT_DIR/VERSION" 2>/dev/null || true)" && [[ -n "$AGENT_VERSION" ]] && go build -ldflags "-X main.version=$AGENT_VERSION" -o "$BIN_SRC" ./cmd/agent)
+  (cd "$ROOT_DIR/agent" && AGENT_VERSION="$(sed 's/-stable$//' "$ROOT_DIR/VERSION" 2>/dev/null || true)" && [[ -n "$AGENT_VERSION" ]] && go build -ldflags "-X main.version=$AGENT_VERSION" -o "$BIN_SRC" ./cmd/agent)
 fi
 
 install -m 0755 "$BIN_SRC" "$BIN_DST"

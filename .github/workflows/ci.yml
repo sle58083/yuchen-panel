@@ -29,14 +29,14 @@ jobs:
       - name: Build agent with release version injection
         if: matrix.module == 'agent'
         run: |
-          VERSION_VALUE="$(cut -d- -f1 ../VERSION)"
+          VERSION_VALUE="$(sed 's/-stable$//' ../VERSION)"
           test -n "$VERSION_VALUE"
           go build -ldflags "-X main.version=$VERSION_VALUE" ./cmd/agent
       - name: Check release version single source
         if: matrix.module == 'agent'
         working-directory: ${{ github.workspace }}
         run: |
-          matches=$(grep -RhnE '"1\.0\.[0-9]+"' agent/cmd/ backend/internal/version/version.go || true)
+          matches=$(grep -RhnE '"[0-9]+\.[0-9]+\.[0-9]+(-[^"]+)?"' agent/cmd/agent/main.go backend/internal/version/version.go || true)
           printf '%s\n' "$matches"
           test "$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)" -eq 1
       - run: go vet ./...
@@ -70,6 +70,8 @@ jobs:
         run: bash scripts/test-docker-install-preflight.sh
       - name: JWT notice and Doctor mode regression tests
         run: bash scripts/test-install-notices-doctor.sh
+      - name: Release manifest consistency regression
+        run: python3 scripts/test-release-manifest.py
       - name: Bash syntax
         shell: bash
         run: |

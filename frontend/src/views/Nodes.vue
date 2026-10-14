@@ -330,7 +330,7 @@ onMounted(load)
   <div class="page-head">
     <div>
       <h1 class="page-title">入站管理</h1>
-      <p class="page-desc">V1.0.2 入站管理清理版：协议下拉选择 VLESS 或 SOCKS5，快捷模板只负责填默认参数。</p>
+      <p class="page-desc">协议下拉选择 VLESS 或 SOCKS5，快捷模板只负责填默认参数。</p>
     </div>
   </div>
 

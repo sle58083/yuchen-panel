@@ -1,132 +1,121 @@
 name: Build Release
-
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
-
+    inputs:
+      tag:
+        description: Existing annotated release tag to build
+        required: true
+        type: string
 permissions:
   contents: write
-
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Resolve version
+      - name: Resolve and validate annotated release version
         id: ver
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            V="${GITHUB_REF#refs/tags/v}"
-          else
-            V="$(cut -d- -f1 VERSION)"
+          set -euo pipefail
+          TAG="${REQUESTED_TAG:-${GITHUB_REF#refs/tags/}}"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]
+          test "$(git cat-file -t "$TAG")" = tag
+          V="${TAG#v}"
+          test "$(sed 's/-stable$//' VERSION)" = "$V"
+          test "$(jq -r .version frontend/package.json)" = "$V"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo 'Existing release: refusing to overwrite or clobber assets.'
+            exit 1
           fi
-          echo "version=${V}" >> "$GITHUB_OUTPUT"
-          echo "pkg=yuchen-panel-v${V}-stable.zip" >> "$GITHUB_OUTPUT"
-
-      - name: Build backend API
+          mkdir -p bin
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "pkg=yuchen-panel-v${V}.zip" >> "$GITHUB_OUTPUT"
+      - name: Build backend API from tag source
         working-directory: backend
         run: |
           go test ./...
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o ../bin/yuchen-panel-api-linux-amd64 ./cmd/server
-
-      - name: Build agent
+      - name: Build matching Agent from tag source
         working-directory: agent
+        env:
+          RELEASE_VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          AGENT_VERSION="$(cut -d- -f1 ../VERSION)"
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=${AGENT_VERSION}" -o ../bin/yuchen-agent-linux-amd64 ./cmd/agent
-
+          go test ./...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$RELEASE_VERSION" -o ../bin/yuchen-agent-linux-amd64 ./cmd/agent
       - name: Build frontend
         working-directory: frontend
         run: |
           npm ci --no-audit --no-fund --progress=false
+          node --test tests/*.test.mjs
           VITE_BASE_PATH=/ npm run build
-
       - name: Package release zip
+        env:
+          PKG: ${{ steps.ver.outputs.pkg }}
         run: |
-          PKG_ROOT_NAME="yuchen-panel-v${{ steps.ver.outputs.version }}-stable"
+          set -euo pipefail
           STAGE="$(mktemp -d)"
-          mkdir -p "${STAGE}/${PKG_ROOT_NAME}"
-          rsync -a \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'dist-release' \
-            --exclude 'releases' \
-            --exclude 'data' \
-            --exclude 'version.json' \
-            --exclude '*.zip' \
-            --exclude '*.log' \
-            --exclude 'frontend/node_modules' \
-            --exclude 'backend/tmp' \
-            --exclude 'agent/tmp' \
-            --exclude '*.tsbuildinfo' \
-            ./ "${STAGE}/${PKG_ROOT_NAME}/"
-          test -x "${STAGE}/${PKG_ROOT_NAME}/bin/yuchen-panel-api-linux-amd64"
-          test -x "${STAGE}/${PKG_ROOT_NAME}/bin/yuchen-agent-linux-amd64"
-          test -f "${STAGE}/${PKG_ROOT_NAME}/frontend/dist/index.html"
-          (cd "${STAGE}" && zip -q -r -9 "${GITHUB_WORKSPACE}/${{ steps.ver.outputs.pkg }}" "${PKG_ROOT_NAME}")
-
-      - name: Compute SHA256
-        id: sha
-        run: |
-          SHA="$(sha256sum "${{ steps.ver.outputs.pkg }}" | awk '{print $1}')"
-          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Update version.json on main
-        run: |
-          SHA="${{ steps.sha.outputs.sha }}"
-          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          jq --arg sha "${SHA}" --arg ts "${TS}" '.sha256 = $sha | .released_at = $ts' version.json > version.json.tmp
-          mv version.json.tmp version.json
-          cat version.json
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          if git diff --cached --quiet; then
-            echo "version.json unchanged, skip push"
-          else
-            git commit -m "release: update version.json sha256 for v${{ steps.ver.outputs.version }}"
-            git push origin HEAD:main
-          fi
-
-      - name: Create GitHub Release
+          ROOT="${PKG%.zip}"
+          mkdir -p "$STAGE/$ROOT"
+          rsync -a --exclude '.git' --exclude '.github' --exclude '.audit' --exclude 'dist-release' --exclude 'releases' --exclude 'data' --exclude 'version.json' --exclude '*.zip' --exclude '*.log' --exclude 'frontend/node_modules' --exclude 'backend/tmp' --exclude 'agent/tmp' --exclude '*.tsbuildinfo' ./ "$STAGE/$ROOT/"
+          test -x "$STAGE/$ROOT/bin/yuchen-panel-api-linux-amd64"
+          test -x "$STAGE/$ROOT/bin/yuchen-agent-linux-amd64"
+          test -f "$STAGE/$ROOT/frontend/dist/index.html"
+          (cd "$STAGE" && zip -q -r -9 "$GITHUB_WORKSPACE/$PKG" "$ROOT")
+          sha256sum "$PKG" | tee SHA256SUMS
+      - name: Create CI-built release assets (no replacement)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          PKG: ${{ steps.ver.outputs.pkg }}
         run: |
-          V="${{ steps.ver.outputs.version }}"
-          TAG="v${V}"
-          PKG="${{ steps.ver.outputs.pkg }}"
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" "${PKG}" --clobber
-          else
-            gh release create "${TAG}" "${PKG}" \
-              --title "Yuchen Panel v${V}" \
-              --notes "Yuchen Panel v${V} 自动构建发布包。
-
-          安装命令：
-          \`\`\`bash
-          bash <(curl -Ls https://raw.githubusercontent.com/sle58083/yuchen-panel/main/install.sh)
-          \`\`\`" \
-              --latest
-          fi
+          set -euo pipefail
+          ARGS=(--verify-tag --title "Yuchen Panel $TAG" --notes-file RELEASE-NOTES.md --latest=false)
+          if [[ "$TAG" == *-* ]]; then ARGS+=(--prerelease); fi
+          gh release create "$TAG" "$PKG" SHA256SUMS "${ARGS[@]}"
+      - name: Verify published archive and generate full manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          VERSION_VALUE: ${{ steps.ver.outputs.version }}
+          PKG: ${{ steps.ver.outputs.pkg }}
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$(mktemp -d)"
+          gh release download "$TAG" --pattern "$PKG" --dir "$VERIFY_DIR"
+          SHA="$(awk 'NR==1{print $1}' SHA256SUMS)"
+          echo "$SHA  $VERIFY_DIR/$PKG" | sha256sum -c -
+          python3 scripts/release-manifest.py --version "$VERSION_VALUE" --sha256 "$SHA" --repository "$GITHUB_REPOSITORY" --output "$RUNNER_TEMP/version.generated.json"
+          cat "$RUNNER_TEMP/version.generated.json"
+      - name: Publish verified metadata on current main (fast-forward only)
+        env:
+          VERSION_VALUE: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -b release-manifest-update origin/main
+          cp "$RUNNER_TEMP/version.generated.json" version.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add version.json
+          git commit -m "release: publish verified manifest for v$VERSION_VALUE"
+          git push origin HEAD:main
