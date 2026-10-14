@@ -36,3 +36,13 @@ CI 新增 `ubuntu-22.04` e2e job；前置条件缺失打印 SKIPPED，CI 必须�
 2. VERSION 文件仍为发行标识 `1.0.2-stable`；Go/API/比较值为 `1.0.2`，panel.info 分别写 VERSION=1.0.2 和 CHANNEL=stable，这是明确拆分，不是要求两个字符串逐字一致。
 
 未合并 main、未打 tag、未触发 Release。
+
+## CI 实际执行结果（完成后补充）
+
+[CI run 38518483171](https://github.com/sle58083/yuchen-panel/actions/runs/38518483171) 的六个 job 全部 success。源码 head 为 `7e0e3c9`，PR 合并检查产物为 `adf5a56`；runner 为 Ubuntu 22.04.5。完整 docker 安装从无 `.env` 的临时源码目录执行，八个断言全部 PASS，耗时约 54 秒。服务端 health 报告 1.0.2；JWT 容器环境与真实 `.env` 逐字节一致。
+
+源码构建 API image：`sha256:ecdf88709f9b8ca2154a066e80ea98fa37e846a7a22a35a37bc0827e43dd9876`，没有使用 fast Release 二进制。八个检查点的实际输出提取见 `task8-e2e-result.txt`。
+
+[下载完整安装日志 artifact](https://github.com/sle58083/yuchen-panel/actions/runs/38518483171/artifacts/11872802386)：含 `.audit/task8-e2e/docker-install.log`（全量、仅凭据行脱敏）及原始 `task8-e2e-result.txt`。Artifact ZIP SHA256：`e78999ec05b7c2693981074901b4421a75b155f8a8d2c9c47e67c237f14c1113`。本地 SKIPPED 状态只适用于本机完整安装；CI 此项现已实际通过。
+
+限制仍然保留：CI runner 预装 Compose v2，因此包名安装循环已做分支逻辑回归，但不把此 e2e 结果宣称为“无插件官方源自动安装真机通过”。宿主 Nginx/systemd/Agent 集成也不属于隔离 e2e 覆盖范围。

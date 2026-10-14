@@ -1,0 +1,9 @@
+PASS 1: installer exit 0
+PASS 2: no ContainerConfig
+PASS 3: no missing-package error
+PASS 4: fresh source config validated
+PASS 5: generated secret at least 32 characters
+PASS 6: source-built container health version=1.0.2
+PASS 7: Compose API running
+PASS 8: container secret equals runtime .env byte-for-byte
+E2E_PASS: eight assertions; source-built Docker image=sha256:ecdf88709f9b8ca2154a066e80ea98fa37e846a7a22a35a37bc0827e43dd9876; complete redacted log=/home/runner/work/yuchen-panel/yuchen-panel/.audit/task8-e2e/docker-install.log
