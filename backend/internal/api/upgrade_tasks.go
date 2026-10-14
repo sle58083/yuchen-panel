@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -275,13 +276,103 @@ func normalizeUpgradeTaskState(s upgradeTaskState) upgradeTaskState {
 	return s
 }
 
+// versionMatchesTarget uses semantic comparison and treats a pre-release as
+// older than its corresponding release. A missing patch component is zero.
 func versionMatchesTarget(current, target string) bool {
-	current = strings.TrimSpace(current)
-	target = strings.TrimSpace(target)
-	if current == "" || target == "" {
-		return false
+	cur, okCur := parseSemanticVersion(current)
+	tgt, okTgt := parseSemanticVersion(target)
+	return okCur && okTgt && compareSemanticVersion(cur, tgt) == 0
+}
+
+type semanticVersion struct {
+	major, minor, patch int
+	pre                 string
+}
+
+func parseSemanticVersion(raw string) (semanticVersion, bool) {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimPrefix(s, "v")
+	if s == "" {
+		return semanticVersion{}, false
 	}
-	return current == target || strings.HasPrefix(current, target) || strings.HasPrefix(target, current)
+	parts := strings.SplitN(s, "-", 2)
+	nums := strings.Split(parts[0], ".")
+	if len(nums) < 1 || len(nums) > 3 {
+		return semanticVersion{}, false
+	}
+	v := semanticVersion{}
+	for i, n := range nums {
+		if n == "" || strings.Trim(n, "0123456789") != "" {
+			return semanticVersion{}, false
+		}
+		value, err := strconv.Atoi(n)
+		if err != nil || value < 0 {
+			return semanticVersion{}, false
+		}
+		switch i {
+		case 0:
+			v.major = value
+		case 1:
+			v.minor = value
+		case 2:
+			v.patch = value
+		}
+	}
+	if len(parts) == 2 {
+		v.pre = parts[1]
+		if v.pre == "stable" {
+			v.pre = ""
+		}
+		if v.pre == "" && parts[1] != "stable" {
+			return semanticVersion{}, false
+		}
+	}
+	return v, true
+}
+
+func compareSemanticVersion(a, b semanticVersion) int {
+	for _, pair := range [][2]int{{a.major, b.major}, {a.minor, b.minor}, {a.patch, b.patch}} {
+		if pair[0] < pair[1] {
+			return -1
+		}
+		if pair[0] > pair[1] {
+			return 1
+		}
+	}
+	if a.pre == b.pre {
+		return 0
+	}
+	if a.pre == "" {
+		return 1
+	}
+	if b.pre == "" {
+		return -1
+	}
+	ap, bp := strings.Split(a.pre, "."), strings.Split(b.pre, ".")
+	for i := 0; i < len(ap) && i < len(bp); i++ {
+		if ap[i] == bp[i] {
+			continue
+		}
+		an, ae := strconv.Atoi(ap[i])
+		bn, be := strconv.Atoi(bp[i])
+		if ae == nil && be == nil {
+			if an < bn {
+				return -1
+			}
+			return 1
+		}
+		if ae == nil {
+			return -1
+		}
+		if be == nil {
+			return 1
+		}
+		return strings.Compare(ap[i], bp[i])
+	}
+	if len(ap) < len(bp) {
+		return -1
+	}
+	return 1
 }
 
 func managedUpgradeSupported() bool {
@@ -447,7 +538,29 @@ systemctl restart yuchen-panel-api nginx yuchen-agent >/dev/null 2>&1 || true
 
 for i in $(seq 1 90); do
   health=$(curl -fsS --max-time 2 "$API_URL" 2>/dev/null || true)
-  if echo "$health" | grep -q "$TARGET_VERSION"; then
+  if python3 - "$health" "$TARGET_VERSION" <<'PY_VERSION'
+import json, sys
+
+def parse(value):
+    value = value.strip().lstrip("v")
+    core, _, pre = value.partition("-")
+    parts = core.split(".")
+    if not 1 <= len(parts) <= 3 or any(not p.isdigit() for p in parts):
+        raise ValueError(value)
+    nums = [int(p) for p in parts] + [0, 0]
+    if "-" in value and not pre: raise ValueError(value)
+    if pre == "stable": pre = ""
+    return tuple(nums[:3]), pre
+try:
+    current = json.loads(sys.argv[1]).get("version", "")
+    target = sys.argv[2]
+    ccore, cpre = parse(current); tcore, tpre = parse(target)
+    if ccore != tcore or (cpre or "") != (tpre or ""):
+        raise ValueError("version mismatch")
+except (ValueError, TypeError, AttributeError, json.JSONDecodeError):
+    raise SystemExit(1)
+PY_VERSION
+  then
     echo "API health target version verified: $TARGET_VERSION"
     write_status success success "升级完成，当前 API 版本已切换到 $TARGET_VERSION"
     echo "Upgrade finished: $(date)"

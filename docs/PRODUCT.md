@@ -72,3 +72,8 @@ Yuchen Panel 不靠限制源码收费，而靠官方能力收费：
 - 企业培训
 - 定制开发
 - 品牌认证服务
+
+
+## 为什么默认推荐 Reality
+
+新建 VLESS 节点在未指定安全方式时默认使用 Reality，改善流量特征并减少被识别的风险。Reality 只是默认值，不是强制项；用户仍可选择 `none` 或适用的 TLS 配置。Trojan 节点仍默认使用 TLS。存量节点不会因升级自动改写。创建 Reality 节点时，面板会通过 `/api/nodes/reality-keys` 自动生成密钥并在保存前填入。

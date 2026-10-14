@@ -231,6 +231,12 @@ func isRemoteVersionNewer(remote, current string) bool {
 }
 
 func comparePanelVersions(a, b string) int {
+	av, aok := parseSemanticVersion(a)
+	bv, bok := parseSemanticVersion(b)
+	if aok && bok {
+		return compareSemanticVersion(av, bv)
+	}
+	// Retain numeric compatibility only for historical four/five-part release IDs.
 	ap := numericVersionParts(a)
 	bp := numericVersionParts(b)
 	max := len(ap)

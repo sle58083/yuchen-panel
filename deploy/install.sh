@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.2-stable"
+VERSION="$(cut -d- -f1 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION" 2>/dev/null || echo 1.0.2)"
+CHANNEL="$(cut -s -d- -f2- "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION")"
 APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}
 INFO_FILE="$CONFIG_DIR/panel.info"
@@ -109,7 +110,7 @@ compose_cmd() {
   if docker compose version >/dev/null 2>&1; then
     echo "docker compose"
   elif command -v docker-compose >/dev/null 2>&1; then
-    echo "docker-compose"
+    echo "" # v1 is unsupported: avoid destructive ContainerConfig failures
   else
     echo ""
   fi
@@ -221,8 +222,7 @@ install_docker_if_missing() {
     return 0
   fi
   if command -v docker-compose >/dev/null 2>&1; then
-    echo "Docker Compose v1 available: $(docker-compose --version 2>/dev/null || true)"
-    return 0
+    echo "Docker Compose v1 is unsupported; installing the v2 plugin before touching existing services."
   fi
 
   echo "Docker Compose not found, installing compose package..."
@@ -231,11 +231,11 @@ install_docker_if_missing() {
     if apt-get install -y docker-compose-plugin; then
       echo "Docker Compose plugin installed."
     else
-      echo "docker-compose-plugin not available from current apt sources, fallback to docker-compose v1."
-      apt-get install -y docker-compose
+      echo "ERROR: Docker Compose v2 plugin unavailable. Install the v2 plugin; existing runtime was left untouched."
+      return 1
     fi
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y docker-compose-plugin || yum install -y docker-compose
+    yum install -y docker-compose-plugin
   fi
 }
 
@@ -347,6 +347,7 @@ API Token=${AGENT_SECRET}
 INSTALL_DIR=${APP_DIR}
 CONFIG_DIR=${CONFIG_DIR}
 VERSION=${VERSION}
+CHANNEL=${CHANNEL}
 INSTALL_MODE=${INSTALL_MODE}
 EOF_INFO
   chmod 600 "$INFO_FILE"
@@ -711,10 +712,6 @@ main() {
   fi
 
   install_base_deps
-  installer_backup_existing
-  cleanup_old_runtime
-  disable_default_nginx_sites
-
   if [[ "$INSTALL_MODE" == "docker" ]]; then
     install_docker_if_missing
     if ! command -v docker >/dev/null 2>&1; then
@@ -723,9 +720,19 @@ main() {
     fi
     COMPOSE=$(compose_cmd)
     if [[ -z "$COMPOSE" ]]; then
-      echo "ERROR: docker compose plugin or docker-compose is required but was not installed successfully."
+      echo "ERROR: Docker Compose is unavailable; existing runtime was left untouched."
       exit 1
     fi
+    if ! (cd "$SRC_DIR" && ${COMPOSE} config >/dev/null 2>&1); then
+      echo "ERROR: Docker Compose configuration validation failed; existing runtime was left untouched."
+      exit 1
+    fi
+  fi
+  installer_backup_existing
+  cleanup_old_runtime
+  disable_default_nginx_sites
+
+  if [[ "$INSTALL_MODE" == "docker" ]]; then
     # Docker mode builds the API/frontend images only. The Agent is a host
     # systemd service and needs a separately supplied Linux binary; silently
     # attempting a source build on a clean host makes the install fail late.

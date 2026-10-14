@@ -11,10 +11,11 @@ import (
 
 	"yuchen-panel/backend/internal/model"
 	"yuchen-panel/backend/internal/security"
+	"yuchen-panel/backend/internal/version"
 	"yuchen-panel/backend/internal/xray"
 )
 
-const panelVersion = "1.0.2-stable"
+const panelVersion = version.Version
 const installDir = "/opt/yuchen-panel"
 
 type systemCheck struct {

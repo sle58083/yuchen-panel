@@ -1,5 +1,8 @@
 # T1–T6 客户端验收清单
 
+> ⚠️ **Docker 模式不包含 yuchen-agent。** 面板 API 与 Web UI 可用，但没有 Agent 写入并重载 Xray，创建的节点不会生效，B 档真实连通测试不可行。需另行部署匹配架构的 `yuchen-agent`。正式用户请使用 fast 模式一行安装；Release 包含预编译 Agent。
+
+
 先按 [DEPLOY-TO-TEST-MACHINE.md](DEPLOY-TO-TEST-MACHINE.md) 在一次性 Ubuntu/Debian 机器部署 Task 4 分支，执行 `prepare-test-env.sh --dry-run --allow-existing`，确认计划后由操作员执行 `--apply --allow-existing`。脚本输出的 `TEST-ENV.json` 是本次验收的资源及样例 SHA256 对照。所有设备导入、代理启动和连接测试均由用户亲自执行；在用户提交结果前，T2–T6 状态为 **MANUAL_REQUIRED**。
 
 判定分两档，回贴时每个用例必须写实际执行了哪一档：

@@ -1,5 +1,8 @@
 # 在一次性 Ubuntu/Debian 测试机部署 Task 4
 
+> ⚠️ **Docker 模式不包含 yuchen-agent。** 面板 API 与 Web UI 可用，但没有 Agent 写入并重载 Xray，创建的节点不会生效，B 档真实连通测试不可行。需另行部署匹配架构的 `yuchen-agent`。正式用户请使用 fast 模式一行安装；Release 包含预编译 Agent。
+
+
 只在可丢弃的测试机执行。下列分支包含 [PR #4](https://github.com/sle58083/yuchen-panel/pull/4) 的修复和 Task 4 验证脚本；**不要使用 `main`**。建议 Ubuntu 22.04 或 Debian 12，root/sudo、Git、curl 和公网出站可用。安装会配置系统服务、Nginx、Docker/Xray，并占用测试端口；先确认测试机没有业务数据。
 
 ## 0. 确认机器和分支

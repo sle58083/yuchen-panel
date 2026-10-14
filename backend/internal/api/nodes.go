@@ -100,6 +100,11 @@ func (r *Router) nodeByID(w http.ResponseWriter, req *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}
+		// An omitted security field during update means “keep the stored choice”.
+		// This preserves legacy nodes that explicitly chose none.
+		if strings.TrimSpace(body.Security) == "" {
+			body.Security = item.Security
+		}
 		if err := r.normalizeNodeLocked(&body, id); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -198,7 +203,14 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		n.Transport = "tcp"
 	}
 	if n.Security == "" {
-		n.Security = "none"
+		switch n.Protocol {
+		case "trojan":
+			n.Security = "tls"
+		case "vless":
+			n.Security = "reality"
+		default:
+			n.Security = "none"
+		}
 	}
 	n.Protocol = strings.ToLower(strings.TrimSpace(n.Protocol))
 	if n.Protocol == "shadowsocks" {
@@ -214,7 +226,7 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 			n.Host = srv.IP
 		}
 	}
-	if n.SNI == "" && n.Security != "none" {
+	if n.SNI == "" && n.Security != "none" && n.Security != "reality" {
 		n.SNI = n.Host
 	}
 	if n.Path == "" && n.Transport == "ws" {

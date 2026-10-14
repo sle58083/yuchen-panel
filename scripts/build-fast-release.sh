@@ -24,7 +24,7 @@ echo "[1/5] Building backend API binary"
 chmod +x "$ROOT_DIR/bin/yuchen-panel-api-linux-amd64"
 
 echo "[2/5] Building agent binary"
-(cd "$ROOT_DIR/agent" && go test ./... && go build -trimpath -ldflags='-s -w' -o "$ROOT_DIR/bin/yuchen-agent-linux-amd64" ./cmd/agent)
+(cd "$ROOT_DIR/agent" && go test ./... && AGENT_VERSION="$(cut -d- -f1 "$ROOT_DIR/VERSION")" && go build -trimpath -ldflags="-s -w -X main.version=$AGENT_VERSION" -o "$ROOT_DIR/bin/yuchen-agent-linux-amd64" ./cmd/agent)
 chmod +x "$ROOT_DIR/bin/yuchen-agent-linux-amd64"
 
 echo "[3/5] Building frontend dist"

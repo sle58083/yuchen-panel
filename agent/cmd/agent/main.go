@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const version = "1.0.2"
+var version = "dev"
 
 type Heartbeat struct {
 	ServerID      string  `json:"server_id"`
@@ -65,6 +65,9 @@ type Config struct {
 }
 
 func main() {
+	if strings.TrimSpace(version) == "" {
+		version = "dev"
+	}
 	cfg := Config{
 		PanelBase:     strings.TrimRight(getenv("YC_PANEL_BASE", "http://127.0.0.1:8088"), "/"),
 		ServerID:      getenv("YC_SERVER_ID", ""),
@@ -83,9 +86,14 @@ func main() {
 		log.Fatal(err)
 	}
 	lastMessage := "agent started"
+	_, pendingErr := os.Stat(cfg.ConfigPath + ".reload-pending")
+	reloadPending := pendingErr == nil
 	log.Printf("Yuchen Agent %s started, panel=%s, server_id=%s, config=%s", version, cfg.PanelBase, cfg.ServerID, cfg.ConfigPath)
 	for {
 		hash := fileHash(cfg.ConfigPath)
+		if reloadPending {
+			hash = ""
+		} // Disk contents do not prove reload succeeded.
 		syncResp, err := syncConfig(cfg, hash)
 		if err != nil {
 			lastMessage = "sync failed: " + err.Error()
@@ -93,9 +101,11 @@ func main() {
 		} else if syncResp.RestartRequired {
 			if cfg.ApplyConfig {
 				if err := applyXrayConfig(cfg, syncResp); err != nil {
+					reloadPending = true
 					lastMessage = "apply failed: " + err.Error()
 					log.Println(lastMessage)
 				} else {
+					reloadPending = false
 					lastMessage = "config applied: " + syncResp.DesiredConfigHash
 					log.Println(lastMessage)
 					hash = fileHash(cfg.ConfigPath)
@@ -205,17 +215,25 @@ func applyXrayConfig(cfg Config, syncResp SyncResponse) error {
 			return fmt.Errorf("xray test failed: %v; output=%s", err, strings.TrimSpace(out))
 		}
 	}
+	if err := os.WriteFile(cfg.ConfigPath+".reload-pending", []byte("reload pending"), 0600); err != nil {
+		return err
+	}
 	if err := os.Rename(tmp, cfg.ConfigPath); err != nil {
 		return err
 	}
 	// 让 xray 服务无论以 root/nobody 运行都能读取配置；生产版后续会改成更细粒度权限。
 	_ = os.Chmod(cfg.ConfigPath, 0644)
 	if cfg.ReloadCommand != "" {
-		if out, err := runShell(strings.ReplaceAll(cfg.ReloadCommand, "{config}", cfg.ConfigPath)); err != nil {
+		command := strings.ReplaceAll(cfg.ReloadCommand, "{config}", cfg.ConfigPath)
+		out, err := runShell(command)
+		if err != nil {
 			return fmt.Errorf("xray reload failed: %v; output=%s", err, strings.TrimSpace(out))
 		}
+		log.Printf("xray reload succeeded: command=%q output=%s", command, strings.TrimSpace(out))
+	} else {
+		return fmt.Errorf("xray reload command is empty; configuration is not confirmed active")
 	}
-	return nil
+	return os.Remove(cfg.ConfigPath + ".reload-pending")
 }
 
 func collectHeartbeat(cfg Config, hostname, hash, msg string) Heartbeat {
