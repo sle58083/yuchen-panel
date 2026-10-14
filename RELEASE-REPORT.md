@@ -1,41 +1,44 @@
-# v1.0.3-rc.2 发布报告
+# v1.0.3-rc.3 发布报告
 
-2026-10-15 Asia/Shanghai；只授权 RC，无 v1.0.3 正式 tag。
-Step 1–7 已完成。资产由 CI 构建上传，ZIP / SHA256SUMS / main manifest 三者一致。尚未在用户 VPS 实机安装新 RC。
+2026-10-15 Asia/Shanghai（下列 GitHub 原始时间带 Z，使用 UTC）。仅授权 RC；没有创建 v1.0.3 正式版。
 
-## 0. 授权修正与原始失败记录
+发布已完成：PR #8 非 squash 合并、两轮 main CI 全绿、注解 tag、CI Release、ZIP/SHA256SUMS/main 清单三者一致。VPS 客户实际流量与停用验收仍由用户执行，本轮没有把静态/CI 结果伪装为真机验收。
 
-用户明确授权：PR #5 已合并，因此新建替代 PR；另加仅版本号的 rc.2 准备提交，不手改 version.json。用户也确认：完整保留 5050059 范围日志，以 main 为基线证明 Task11 只有两条提交，并单独记录版本提交。
+## 0. 发布前核查与授权例外
 
-上次 Step1 pull --ff-only 因本地旧历史 7bd7628 与远端 5050059 分叉退出 128，已停止，无远端变更；完整失败报告仍保存在 .codex-release-inspect/rc2/RELEASE-REPORT.md（此文件为失败现场，不覆盖）。
-本轮先创建 backup/stale-audit-7bd7628，再按用户指定 checkout -B 从远端恢复。未使用 reset --hard/rebase/force push。尝试设置 upstream 时因 fetch 仅声明 main 被拒绝（fatal: cannot set up tracking information; starting point 'origin/fix/audit-batch4-test-harness' is not a branch）；后续获用户继续确认后，增加本地 fetch refspec 并设置 upstream 成功。未隐藏此前失败。
+远端 main=8ace907f77e22d7a05bbb9e7f85a65439e7bb858；Task13=6f3d0ac41a15ec1fd46d2150e05d59f35ea5c08f。
+实际 git log origin/main..origin/fix/task13-monthly-traffic 仅 f96f56a、6f3d0ac；反向范围为空。version.json diff为空。PR #8 状态 OPEN、MERGEABLE，12 项 checks 均 SUCCESS（两个六 job run）。rc.3 tag 不存在。
 
-## Step 1 · 备份、恢复与合入审计分支
+发现源码仍为 rc.2，release.yml 强制 tag 版本与 VERSION、frontend/package.json 一致，直接打 rc.3 会失败。先提供具体准备清单 .codex-release-inspect/rc3/RC3-PREPARATION.md，并询问范围例外。
+用户明确答复：**“允许单独的发布准备提交，继续 rc.3”**。
+因此先保存 Task13 两条＋merge 的干净历史证据，再独立准备五个版本文件及 RELEASE-NOTES.md、manifest 生成器仅 changelog 文案；增加一轮 main CI，不改变业务逻辑或手工改 version.json。
 
-实际命令：
-```bash
-git branch backup/stale-audit-7bd7628 fix/audit-batch4-test-harness
-git checkout -B fix/audit-batch4-test-harness origin/fix/audit-batch4-test-harness
-git fetch origin fix/task11-clean-node-names:refs/remotes/origin/fix/task11-clean-node-names
-git config --add remote.origin.fetch '+refs/heads/fix/audit-batch4-test-harness:refs/remotes/origin/fix/audit-batch4-test-harness'
+## Step 1 · 使用远端恢复本地分支
+
+实际命令（关键 Git 命令均检查退出码）：
+```text
+git fetch origin refs/heads/main:refs/remotes/origin/main refs/heads/fix/task13-monthly-traffic:refs/remotes/origin/fix/task13-monthly-traffic
+git config --add remote.origin.fetch '+refs/heads/fix/task13-monthly-traffic:refs/remotes/origin/fix/task13-monthly-traffic'
 git fetch origin
-git branch --set-upstream-to=origin/fix/audit-batch4-test-harness
-git merge --no-ff origin/fix/task11-clean-node-names -F .git/task11-merge-message.txt
+git checkout -B fix/task13-monthly-traffic origin/fix/task13-monthly-traffic
+git log --oneline -1
+git branch -vv
 ```
-真实输出：
+本地同名分支原本就等于远端 6f3d0ac、工作区干净，因此没有陈旧状态需备份；仍按指示由远端重建，未复用未核对的旧状态。已有 backup/stale-audit-7bd7628 保留未删。
+实际输出：
 ```text
-Reset branch 'fix/audit-batch4-test-harness'
-5050059 fix(release): preserve RC version and publish verified complete metadata
-branch 'fix/audit-batch4-test-harness' set up to track 'origin/fix/audit-batch4-test-harness'.
-Merge made by the 'ort' strategy.
+Reset branch 'fix/task13-monthly-traffic'
+branch 'fix/task13-monthly-traffic' set up to track 'origin/fix/task13-monthly-traffic'.
+Your branch is up to date with 'origin/fix/task13-monthly-traffic'.
+6f3d0ac fix(billing): refresh usage details and document quota validation evidence
 ```
-checkout -B 只移动已备份的本地分支，不是 reset --hard；备份保留。
+Git 的 Reset branch 文字来自 checkout -B；未执行 reset --hard/rebase/force push。
 
-本地分支和备份
+本地分支快照
 
 实际命令：
 ```text
-git branch -vv（恢复后的快照）
+git branch -vv
 ```
 
 原始输出：
@@ -44,139 +47,69 @@ backup/stale-audit-7bd7628    7bd7628 docs(test): record Task 9 green CI and ins
   fix/audit-batch1-security     b3cb4a1 fix(access)!: enforce explicit grants and retire Shadowsocks
   fix/audit-batch10-nginx       5fc4312 docs(test): record Task 10 real nginx and green CI evidence
   fix/audit-batch3-client-uri   7854bf1 fix(clients): close URI encoding and validation gaps
-* fix/audit-batch4-test-harness 5050059 [origin/fix/audit-batch4-test-harness] fix(release): preserve RC version and publish verified complete metadata
+  fix/audit-batch4-test-harness ceb95f4 [origin/fix/audit-batch4-test-harness] chore(release): prepare unified v1.0.3-rc.2 version
   fix/task11-clean-node-names   47c193e docs(task11): record clean-name exports and actual regression evidence
-  main                          21bceee [origin/main] docs(release): record verified v1.0.3-rc.1 publication evidence
+* fix/task13-monthly-traffic    6f3d0ac [origin/fix/task13-monthly-traffic] fix(billing): refresh usage details and document quota validation evidence
+  main                          8ace907 [origin/main] docs(release): record verified rc.2 publication and preserved assets
   release/prepare-rc1           5738677 fix(release): preserve RC version and publish verified complete metadata
 ```
 
-
-完整 5050059 范围（合并后、版本准备前）
+## Step 2 · 合并 PR #8，保留分支
 
 实际命令：
 ```text
-git log --oneline 5050059..HEAD
+gh pr merge 8 --repo sle58083/yuchen-panel --merge --delete-branch=false --match-head-commit 6f3d0ac41a15ec1fd46d2150e05d59f35ea5c08f
+git fetch origin main
+git log --oneline 8ace907..origin/main
+```
+merge 命令退出 0；无冲突。没有 squash。
+
+合并未夹带的关键范围证据（版本准备之前）
+
+实际命令：
+```text
+git log --oneline 8ace907..origin/main
 ```
 
 原始输出：
 ```text
-7494af0 feat(share): drop short ID labels and keep numeric deduplication
-47c193e docs(task11): record clean-name exports and actual regression evidence
-20a7a22 fix(share): remove short ID labels and retain numeric name deduplication
-21bceee docs(release): record verified v1.0.3-rc.1 publication evidence
-8856345 release: publish verified manifest for v1.0.3-rc.1
-da927c6 merge: audit round 1 security and client compatibility fixes
+29a3c6e Merge pull request #8 from sle58083/fix/task13-monthly-traffic
+6f3d0ac fix(billing): refresh usage details and document quota validation evidence
+f96f56a feat(billing): meter per-client traffic and enforce renewable monthly quotas
 ```
 
 
-未夹带功能提交的 main 基线证据
+PR #8 合并状态
 
 实际命令：
 ```text
-git log --oneline origin/main..HEAD（合并后、版本准备前）
+gh pr view 8 --repo sle58083/yuchen-panel --json state,mergedAt,mergeCommit
 ```
 
 原始输出：
 ```text
-7494af0 feat(share): drop short ID labels and keep numeric deduplication
-47c193e docs(task11): record clean-name exports and actual regression evidence
-20a7a22 fix(share): remove short ID labels and retain numeric name deduplication
+{"mergeCommit":{"oid":"29a3c6e5bb3e187f173755a4e062533cbab21a05"},"mergedAt":"2026-10-14T21:17:02Z","state":"MERGED"}
 ```
 
-其中 da927c6 / 8856345 / 21bceee 是 main 已有的 rc.1 发布继承历史，并非本轮新功能；这点由用户确认验收口径。7494af0 是本轮 --no-ff merge；真正 Task11 是 20a7a22 + 47c193e。
 
-单独获授权的版本准备提交 ceb95f4，仅五个文件：VERSION、backend/internal/version/version.go、frontend/package.json、frontend/package-lock.json、frontend/src/version.ts。Agent 沿用从 VERSION 注入；没有手工改 version.json。
-实际提交/推送输出：
-```text
-[fix/audit-batch4-test-harness ceb95f4] chore(release): prepare unified v1.0.3-rc.2 version
- 5 files changed, 6 insertions(+), 6 deletions(-)
-To https://github.com/sle58083/yuchen-panel.git
-   5050059..ceb95f4  fix/audit-batch4-test-harness -> fix/audit-batch4-test-harness
-```
-
-完整获准增量（含版本准备）
+合并提交双父证据
 
 实际命令：
 ```text
-git log --oneline origin/main..HEAD（版本提交后）
+git show -s --format='commit %H%nparents %P%n%B' 29a3c6e
 ```
 
 原始输出：
 ```text
-ceb95f4 chore(release): prepare unified v1.0.3-rc.2 version
-7494af0 feat(share): drop short ID labels and keep numeric deduplication
-47c193e docs(task11): record clean-name exports and actual regression evidence
-20a7a22 fix(share): remove short ID labels and retain numeric name deduplication
+commit 29a3c6e5bb3e187f173755a4e062533cbab21a05
+parents 8ace907f77e22d7a05bbb9e7f85a65439e7bb858 6f3d0ac41a15ec1fd46d2150e05d59f35ea5c08f
+Merge pull request #8 from sle58083/fix/task13-monthly-traffic
+
+feat: renewable monthly traffic quotas with Xray per-client stats
 ```
 
 
-## Step 2 · 审计分支 CI 全绿
-
-实际命令：
-```text
-gh run list --repo sle58083/yuchen-panel --branch fix/audit-batch4-test-harness --limit 3
-```
-
-原始输出：
-```text
-completed	success	release: Task11 clean node names and v1.0.3-rc.2 preparation	CI	fix/audit-batch4-test-harness	pull_request	38600129274	1m13s	2026-10-14T16:40:50Z
-completed	success	chore(release): prepare unified v1.0.3-rc.2 version	CI	fix/audit-batch4-test-harness	push	38600119060	1m16s	2026-10-14T16:40:46Z
-completed	success	release: audited fixes and v1.0.3-rc.1 preparation	CI	fix/audit-batch4-test-harness	pull_request	38545571083	1m6s	2026-10-14T09:52:46Z
-```
-
-
-分支六个 job 的真实结论
-
-实际命令：
-```text
-gh run view 38600129274 --repo sle58083/yuchen-panel --json status,conclusion,jobs
-```
-
-原始输出：
-```text
-{"conclusion":"success","jobs":[{"completedAt":"2026-10-14T16:41:14Z","conclusion":"success","databaseId":115976925919,"name":"Frontend build and typecheck","startedAt":"2026-10-14T16:40:53Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:40:55Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:40:55Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:40:55Z","status":"completed"},{"completedAt":"2026-10-14T16:41:00Z","conclusion":"success","name":"Run actions/setup-node@v4","number":3,"startedAt":"2026-10-14T16:40:55Z","status":"completed"},{"completedAt":"2026-10-14T16:41:02Z","conclusion":"success","name":"Run npm ci --no-audit --no-fund --progress=false","number":4,"startedAt":"2026-10-14T16:41:00Z","status":"completed"},{"completedAt":"2026-10-14T16:41:02Z","conclusion":"success","name":"Run node --test tests/*.test.mjs","number":5,"startedAt":"2026-10-14T16:41:02Z","status":"completed"},{"completedAt":"2026-10-14T16:41:08Z","conclusion":"success","name":"Run npm run build","number":6,"startedAt":"2026-10-14T16:41:02Z","status":"completed"},{"completedAt":"2026-10-14T16:41:12Z","conclusion":"success","name":"Post Run actions/setup-node@v4","number":11,"startedAt":"2026-10-14T16:41:08Z","status":"completed"},{"completedAt":"2026-10-14T16:41:12Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":12,"startedAt":"2026-10-14T16:41:12Z","status":"completed"},{"completedAt":"2026-10-14T16:41:12Z","conclusion":"success","name":"Complete job","number":13,"startedAt":"2026-10-14T16:41:12Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600129274/job/115976925919"},{"completedAt":"2026-10-14T16:41:18Z","conclusion":"success","databaseId":115976926381,"name":"Shell syntax and ShellCheck","startedAt":"2026-10-14T16:40:53Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:40:55Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:40:56Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:40:55Z","status":"completed"},{"completedAt":"2026-10-14T16:41:06Z","conclusion":"success","name":"Install ShellCheck","number":3,"startedAt":"2026-10-14T16:40:56Z","status":"completed"},{"completedAt":"2026-10-14T16:41:09Z","conclusion":"success","name":"ShellCheck","number":4,"startedAt":"2026-10-14T16:41:06Z","status":"completed"},{"completedAt":"2026-10-14T16:41:14Z","conclusion":"success","name":"Docker installer preflight regression tests","number":5,"startedAt":"2026-10-14T16:41:09Z","status":"completed"},{"completedAt":"2026-10-14T16:41:14Z","conclusion":"success","name":"JWT notice and Doctor mode regression tests","number":6,"startedAt":"2026-10-14T16:41:14Z","status":"completed"},{"completedAt":"2026-10-14T16:41:14Z","conclusion":"success","name":"Release manifest consistency regression","number":7,"startedAt":"2026-10-14T16:41:14Z","status":"completed"},{"completedAt":"2026-10-14T16:41:15Z","conclusion":"success","name":"Bash syntax","number":8,"startedAt":"2026-10-14T16:41:14Z","status":"completed"},{"completedAt":"2026-10-14T16:41:15Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-10-14T16:41:15Z","status":"completed"},{"completedAt":"2026-10-14T16:41:15Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-10-14T16:41:15Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600129274/job/115976926381"},{"completedAt":"2026-10-14T16:41:40Z","conclusion":"success","databaseId":115976926434,"name":"Fresh Docker installer integration (Ubuntu 22.04)","startedAt":"2026-10-14T16:40:53Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:40:54Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:40:53Z","status":"completed"},{"completedAt":"2026-10-14T16:40:54Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:41:01Z","conclusion":"success","name":"Integration test dependencies","number":3,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:41:37Z","conclusion":"success","name":"Execute isolated source installer and eight assertions","number":4,"startedAt":"2026-10-14T16:41:01Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Run actions/upload-artifact@v4","number":5,"startedAt":"2026-10-14T16:41:37Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":10,"startedAt":"2026-10-14T16:41:38Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Complete job","number":11,"startedAt":"2026-10-14T16:41:38Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600129274/job/115976926434"},{"completedAt":"2026-10-14T16:41:28Z","conclusion":"success","databaseId":115976926454,"name":"Go build, vet and race tests (agent)","startedAt":"2026-10-14T16:40:53Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:40:54Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:40:53Z","status":"completed"},{"completedAt":"2026-10-14T16:40:55Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:41:02Z","conclusion":"success","name":"Run actions/setup-go@v5","number":3,"startedAt":"2026-10-14T16:40:55Z","status":"completed"},{"completedAt":"2026-10-14T16:41:11Z","conclusion":"success","name":"Run go build ./...","number":4,"startedAt":"2026-10-14T16:41:02Z","status":"completed"},{"completedAt":"2026-10-14T16:41:11Z","conclusion":"success","name":"Build agent with release version injection","number":5,"startedAt":"2026-10-14T16:41:11Z","status":"completed"},{"completedAt":"2026-10-14T16:41:11Z","conclusion":"success","name":"Check release version single source","number":6,"startedAt":"2026-10-14T16:41:11Z","status":"completed"},{"completedAt":"2026-10-14T16:41:12Z","conclusion":"success","name":"Run go vet ./...","number":7,"startedAt":"2026-10-14T16:41:11Z","status":"completed"},{"completedAt":"2026-10-14T16:41:25Z","conclusion":"success","name":"Run go test -race ./...","number":8,"startedAt":"2026-10-14T16:41:12Z","status":"completed"},{"completedAt":"2026-10-14T16:41:25Z","conclusion":"success","name":"Post Run actions/setup-go@v5","number":15,"startedAt":"2026-10-14T16:41:25Z","status":"completed"},{"completedAt":"2026-10-14T16:41:25Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-10-14T16:41:25Z","status":"completed"},{"completedAt":"2026-10-14T16:41:25Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-10-14T16:41:25Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600129274/job/115976926454"},{"completedAt":"2026-10-14T16:42:01Z","conclusion":"success","databaseId":115976926459,"name":"Docker Compose builds","startedAt":"2026-10-14T16:40:53Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:40:54Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:40:53Z","status":"completed"},{"completedAt":"2026-10-14T16:40:54Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:41:35Z","conclusion":"success","name":"Run docker compose build yuchen-panel-api","number":3,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:42:00Z","conclusion":"success","name":"Run docker compose build yuchen-panel-frontend","number":4,"startedAt":"2026-10-14T16:41:35Z","status":"completed"},{"completedAt":"2026-10-14T16:42:00Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":8,"startedAt":"2026-10-14T16:42:00Z","status":"completed"},{"completedAt":"2026-10-14T16:42:00Z","conclusion":"success","name":"Complete job","number":9,"startedAt":"2026-10-14T16:42:00Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600129274/job/115976926459"},{"completedAt":"2026-10-14T16:41:41Z","conclusion":"success","databaseId":115976926702,"name":"Go build, vet and race tests (backend)","startedAt":"2026-10-14T16:40:53Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:40:55Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:40:54Z","status":"completed"},{"completedAt":"2026-10-14T16:40:56Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:40:55Z","status":"completed"},{"completedAt":"2026-10-14T16:41:05Z","conclusion":"success","name":"Run actions/setup-go@v5","number":3,"startedAt":"2026-10-14T16:40:56Z","status":"completed"},{"completedAt":"2026-10-14T16:41:15Z","conclusion":"success","name":"Run go build ./...","number":4,"startedAt":"2026-10-14T16:41:05Z","status":"completed"},{"completedAt":"2026-10-14T16:41:15Z","conclusion":"skipped","name":"Build agent with release version injection","number":5,"startedAt":"2026-10-14T16:41:15Z","status":"completed"},{"completedAt":"2026-10-14T16:41:15Z","conclusion":"skipped","name":"Check release version single source","number":6,"startedAt":"2026-10-14T16:41:15Z","status":"completed"},{"completedAt":"2026-10-14T16:41:17Z","conclusion":"success","name":"Run go vet ./...","number":7,"startedAt":"2026-10-14T16:41:15Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Run go test -race ./...","number":8,"startedAt":"2026-10-14T16:41:17Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Post Run actions/setup-go@v5","number":15,"startedAt":"2026-10-14T16:41:38Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-10-14T16:41:38Z","status":"completed"},{"completedAt":"2026-10-14T16:41:38Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-10-14T16:41:38Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600129274/job/115976926702"}],"status":"completed"}
-```
-
-## Step 3 · 替代 PR #7 非 squash 合并
-
-实际命令：
-```bash
-gh pr create --repo sle58083/yuchen-panel --head fix/audit-batch4-test-harness --base main --title 'release: Task11 clean node names and v1.0.3-rc.2 preparation' --body-file .codex-release-inspect/rc2/pr-body.txt
-gh pr merge 7 --repo sle58083/yuchen-panel --merge --delete-branch=false --match-head-commit ceb95f4f4e8c2adab04ae26970175da5172f430a
-```
-PR create 实际输出 https://github.com/sle58083/yuchen-panel/pull/7。PR #5 已在 rc.1 合并，不能再次合并，因此按用户确认使用替代 PR。
-
-PR 合并状态
-
-实际命令：
-```text
-gh pr view 7 --repo sle58083/yuchen-panel --json state,mergedAt,mergeCommit
-```
-
-原始输出：
-```text
-{"mergeCommit":{"oid":"ef0e76d2181c7b04e75bfa852be7923023fed340"},"mergedAt":"2026-10-14T16:42:36Z","state":"MERGED"}
-```
-
-
-main 合并双父提交
-
-实际命令：
-```text
-git show -s --format='%H%n%P%n%B' HEAD（pull 后）
-```
-
-原始输出：
-```text
-ef0e76d2181c7b04e75bfa852be7923023fed340
-21bceee80f1f64ff2fa502bd139e81928f99685e ceb95f4f4e8c2adab04ae26970175da5172f430a
-Merge pull request #7 from sle58083/fix/audit-batch4-test-harness
-
-release: Task11 clean node names and v1.0.3-rc.2 preparation
-```
-
-
-## Step 4 · main CI 全绿
+## Step 3 · 合并后的第一轮 main CI
 
 实际命令：
 ```text
@@ -185,56 +118,164 @@ gh run list --repo sle58083/yuchen-panel --branch main --limit 3
 
 原始输出：
 ```text
+completed	success	Merge pull request #8 from sle58083/fix/task13-monthly-traffic	CI	main	push	38639041909	1m12s	2026-10-14T21:17:05Z
+completed	success	docs(release): record verified rc.2 publication and preserved assets	CI	main	push	38601161818	1m23s	2026-10-14T16:48:10Z
 completed	success	Merge pull request #7 from sle58083/fix/audit-batch4-test-harness	CI	main	push	38600379832	1m8s	2026-10-14T16:42:38Z
-completed	success	docs(release): record verified v1.0.3-rc.1 publication evidence	CI	main	push	38548765906	1m8s	2026-10-14T10:19:31Z
-completed	success	merge: audit round 1 security and client compatibility fixes	CI	main	push	38548087432	1m8s	2026-10-14T10:13:47Z
 ```
 
 
-main 全部 job 结论
+第一轮六 job 全绿
 
 实际命令：
 ```text
-gh run view 38600379832 --repo sle58083/yuchen-panel --json status,conclusion,jobs
+gh run view 38639041909 --repo sle58083/yuchen-panel --json status,conclusion,jobs --jq '{status,conclusion,jobs:[.jobs[]|{name,status,conclusion}]}'
 ```
 
 原始输出：
 ```text
-{"conclusion":"success","jobs":[{"completedAt":"2026-10-14T16:43:24Z","conclusion":"success","databaseId":115977787909,"name":"Go build, vet and race tests (agent)","startedAt":"2026-10-14T16:42:41Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:42:42Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:42:41Z","status":"completed"},{"completedAt":"2026-10-14T16:42:43Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:42:42Z","status":"completed"},{"completedAt":"2026-10-14T16:42:57Z","conclusion":"success","name":"Run actions/setup-go@v5","number":3,"startedAt":"2026-10-14T16:42:43Z","status":"completed"},{"completedAt":"2026-10-14T16:43:06Z","conclusion":"success","name":"Run go build ./...","number":4,"startedAt":"2026-10-14T16:42:57Z","status":"completed"},{"completedAt":"2026-10-14T16:43:06Z","conclusion":"success","name":"Build agent with release version injection","number":5,"startedAt":"2026-10-14T16:43:06Z","status":"completed"},{"completedAt":"2026-10-14T16:43:06Z","conclusion":"success","name":"Check release version single source","number":6,"startedAt":"2026-10-14T16:43:06Z","status":"completed"},{"completedAt":"2026-10-14T16:43:08Z","conclusion":"success","name":"Run go vet ./...","number":7,"startedAt":"2026-10-14T16:43:06Z","status":"completed"},{"completedAt":"2026-10-14T16:43:21Z","conclusion":"success","name":"Run go test -race ./...","number":8,"startedAt":"2026-10-14T16:43:08Z","status":"completed"},{"completedAt":"2026-10-14T16:43:21Z","conclusion":"success","name":"Post Run actions/setup-go@v5","number":15,"startedAt":"2026-10-14T16:43:21Z","status":"completed"},{"completedAt":"2026-10-14T16:43:21Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-10-14T16:43:21Z","status":"completed"},{"completedAt":"2026-10-14T16:43:21Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-10-14T16:43:21Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600379832/job/115977787909"},{"completedAt":"2026-10-14T16:42:57Z","conclusion":"success","databaseId":115977788168,"name":"Frontend build and typecheck","startedAt":"2026-10-14T16:42:41Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:42:42Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:42:41Z","status":"completed"},{"completedAt":"2026-10-14T16:42:43Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:42:42Z","status":"completed"},{"completedAt":"2026-10-14T16:42:47Z","conclusion":"success","name":"Run actions/setup-node@v4","number":3,"startedAt":"2026-10-14T16:42:43Z","status":"completed"},{"completedAt":"2026-10-14T16:42:49Z","conclusion":"success","name":"Run npm ci --no-audit --no-fund --progress=false","number":4,"startedAt":"2026-10-14T16:42:47Z","status":"completed"},{"completedAt":"2026-10-14T16:42:49Z","conclusion":"success","name":"Run node --test tests/*.test.mjs","number":5,"startedAt":"2026-10-14T16:42:49Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Run npm run build","number":6,"startedAt":"2026-10-14T16:42:49Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Post Run actions/setup-node@v4","number":11,"startedAt":"2026-10-14T16:42:55Z","status":"completed"},{"completedAt":"2026-10-14T16:42:56Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":12,"startedAt":"2026-10-14T16:42:55Z","status":"completed"},{"completedAt":"2026-10-14T16:42:56Z","conclusion":"success","name":"Complete job","number":13,"startedAt":"2026-10-14T16:42:56Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600379832/job/115977788168"},{"completedAt":"2026-10-14T16:43:41Z","conclusion":"success","databaseId":115977788209,"name":"Fresh Docker installer integration (Ubuntu 22.04)","startedAt":"2026-10-14T16:42:41Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:42:42Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:42:41Z","status":"completed"},{"completedAt":"2026-10-14T16:42:43Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:42:42Z","status":"completed"},{"completedAt":"2026-10-14T16:42:49Z","conclusion":"success","name":"Integration test dependencies","number":3,"startedAt":"2026-10-14T16:42:43Z","status":"completed"},{"completedAt":"2026-10-14T16:43:38Z","conclusion":"success","name":"Execute isolated source installer and eight assertions","number":4,"startedAt":"2026-10-14T16:42:49Z","status":"completed"},{"completedAt":"2026-10-14T16:43:39Z","conclusion":"success","name":"Run actions/upload-artifact@v4","number":5,"startedAt":"2026-10-14T16:43:38Z","status":"completed"},{"completedAt":"2026-10-14T16:43:39Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":10,"startedAt":"2026-10-14T16:43:39Z","status":"completed"},{"completedAt":"2026-10-14T16:43:39Z","conclusion":"success","name":"Complete job","number":11,"startedAt":"2026-10-14T16:43:39Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600379832/job/115977788209"},{"completedAt":"2026-10-14T16:43:45Z","conclusion":"success","databaseId":115977788312,"name":"Docker Compose builds","startedAt":"2026-10-14T16:42:41Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:42:43Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:42:42Z","status":"completed"},{"completedAt":"2026-10-14T16:42:44Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:42:43Z","status":"completed"},{"completedAt":"2026-10-14T16:43:24Z","conclusion":"success","name":"Run docker compose build yuchen-panel-api","number":3,"startedAt":"2026-10-14T16:42:44Z","status":"completed"},{"completedAt":"2026-10-14T16:43:44Z","conclusion":"success","name":"Run docker compose build yuchen-panel-frontend","number":4,"startedAt":"2026-10-14T16:43:24Z","status":"completed"},{"completedAt":"2026-10-14T16:43:44Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":8,"startedAt":"2026-10-14T16:43:44Z","status":"completed"},{"completedAt":"2026-10-14T16:43:44Z","conclusion":"success","name":"Complete job","number":9,"startedAt":"2026-10-14T16:43:44Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600379832/job/115977788312"},{"completedAt":"2026-10-14T16:42:59Z","conclusion":"success","databaseId":115977788379,"name":"Shell syntax and ShellCheck","startedAt":"2026-10-14T16:42:41Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:42:43Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:42:42Z","status":"completed"},{"completedAt":"2026-10-14T16:42:44Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:42:43Z","status":"completed"},{"completedAt":"2026-10-14T16:42:51Z","conclusion":"success","name":"Install ShellCheck","number":3,"startedAt":"2026-10-14T16:42:44Z","status":"completed"},{"completedAt":"2026-10-14T16:42:54Z","conclusion":"success","name":"ShellCheck","number":4,"startedAt":"2026-10-14T16:42:51Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Docker installer preflight regression tests","number":5,"startedAt":"2026-10-14T16:42:54Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"JWT notice and Doctor mode regression tests","number":6,"startedAt":"2026-10-14T16:42:55Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Release manifest consistency regression","number":7,"startedAt":"2026-10-14T16:42:55Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Bash syntax","number":8,"startedAt":"2026-10-14T16:42:55Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-10-14T16:42:55Z","status":"completed"},{"completedAt":"2026-10-14T16:42:55Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-10-14T16:42:55Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600379832/job/115977788379"},{"completedAt":"2026-10-14T16:43:29Z","conclusion":"success","databaseId":115977788490,"name":"Go build, vet and race tests (backend)","startedAt":"2026-10-14T16:42:41Z","status":"completed","steps":[{"completedAt":"2026-10-14T16:42:44Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-10-14T16:42:42Z","status":"completed"},{"completedAt":"2026-10-14T16:42:45Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-10-14T16:42:44Z","status":"completed"},{"completedAt":"2026-10-14T16:42:54Z","conclusion":"success","name":"Run actions/setup-go@v5","number":3,"startedAt":"2026-10-14T16:42:45Z","status":"completed"},{"completedAt":"2026-10-14T16:43:04Z","conclusion":"success","name":"Run go build ./...","number":4,"startedAt":"2026-10-14T16:42:54Z","status":"completed"},{"completedAt":"2026-10-14T16:43:04Z","conclusion":"skipped","name":"Build agent with release version injection","number":5,"startedAt":"2026-10-14T16:43:04Z","status":"completed"},{"completedAt":"2026-10-14T16:43:04Z","conclusion":"skipped","name":"Check release version single source","number":6,"startedAt":"2026-10-14T16:43:04Z","status":"completed"},{"completedAt":"2026-10-14T16:43:06Z","conclusion":"success","name":"Run go vet ./...","number":7,"startedAt":"2026-10-14T16:43:04Z","status":"completed"},{"completedAt":"2026-10-14T16:43:25Z","conclusion":"success","name":"Run go test -race ./...","number":8,"startedAt":"2026-10-14T16:43:06Z","status":"completed"},{"completedAt":"2026-10-14T16:43:26Z","conclusion":"success","name":"Post Run actions/setup-go@v5","number":15,"startedAt":"2026-10-14T16:43:25Z","status":"completed"},{"completedAt":"2026-10-14T16:43:26Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":16,"startedAt":"2026-10-14T16:43:26Z","status":"completed"},{"completedAt":"2026-10-14T16:43:26Z","conclusion":"success","name":"Complete job","number":17,"startedAt":"2026-10-14T16:43:26Z","status":"completed"}],"url":"https://github.com/sle58083/yuchen-panel/actions/runs/38600379832/job/115977788490"}],"status":"completed"}
+{"conclusion":"success","jobs":[{"conclusion":"success","name":"Shell syntax and ShellCheck","status":"completed"},{"conclusion":"success","name":"Go build, vet and race tests (backend)","status":"completed"},{"conclusion":"success","name":"Docker Compose builds","status":"completed"},{"conclusion":"success","name":"Go build, vet and race tests (agent)","status":"completed"},{"conclusion":"success","name":"Frontend build and typecheck","status":"completed"},{"conclusion":"success","name":"Fresh Docker installer integration (Ubuntu 22.04)","status":"completed"}],"status":"completed"}
 ```
 
-gh run watch 38600379832 --exit-status 退出 0；全部 success 后才执行 tag。
+gh run watch 38639041909 --repo sle58083/yuchen-panel --exit-status 退出 0。
 
-## Step 5 · 带注解 rc.2 tag
+已获准的独立发布准备提交
 
 实际命令：
 ```text
-git tag -a v1.0.3-rc.2 -F .git/rc2-tag-message.txt; git cat-file -t v1.0.3-rc.2; git cat-file -p v1.0.3-rc.2
+git show --stat --format=oneline c41bcc2
 ```
 
 原始输出：
 ```text
-object ef0e76d2181c7b04e75bfa852be7923023fed340
+c41bcc2b84fa6a14209baf8f3cf7b2b27de45277 chore(release): prepare rc.3 version and monthly quota release notes
+ RELEASE-NOTES.md                    | 39 +++++++++++++++++++++++++------------
+ VERSION                             |  2 +-
+ backend/internal/version/version.go |  2 +-
+ frontend/package-lock.json          |  4 ++--
+ frontend/package.json               |  2 +-
+ frontend/src/version.ts             |  2 +-
+ scripts/release-manifest.py         | 11 ++++++-----
+ 7 files changed, 39 insertions(+), 23 deletions(-)
+```
+
+准备仅七个文件：五个版本文件从 1.0.3-rc.2 → 1.0.3-rc.3，Release 文案及生成器 changelog；Agent/安装器已复用版本注入，无需额外改源码。git diff --stat -- version.json 仍为空。
+实际本地 python3 scripts/test-release-manifest.py：
+```text
+test_rc_fields_are_consistent (__main__.ReleaseMetadataTest.test_rc_fields_are_consistent) ... ok
+test_rejects_bad_digest (__main__.ReleaseMetadataTest.test_rejects_bad_digest) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+OK
+```
+实际提交／普通推送输出：
+```text
+[main c41bcc2] chore(release): prepare rc.3 version and monthly quota release notes
+ 7 files changed, 39 insertions(+), 23 deletions(-)
+To https://github.com/sle58083/yuchen-panel.git
+   29a3c6e..c41bcc2  main -> main
+```
+
+独立准备之后的完整历史（不隐瞒额外获准提交）
+
+实际命令：
+```text
+git log --oneline 8ace907..c41bcc2
+```
+
+原始输出：
+```text
+c41bcc2 chore(release): prepare rc.3 version and monthly quota release notes
+29a3c6e Merge pull request #8 from sle58083/fix/task13-monthly-traffic
+6f3d0ac fix(billing): refresh usage details and document quota validation evidence
+f96f56a feat(billing): meter per-client traffic and enforce renewable monthly quotas
+```
+
+
+版本准备后的第二轮 main CI
+
+实际命令：
+```text
+gh run list --repo sle58083/yuchen-panel --branch main --limit 3
+```
+
+原始输出：
+```text
+completed	success	chore(release): prepare rc.3 version and monthly quota release notes	CI	main	push	38639513321	6m44s	2026-10-14T21:20:37Z
+completed	success	Merge pull request #8 from sle58083/fix/task13-monthly-traffic	CI	main	push	38639041909	1m12s	2026-10-14T21:17:05Z
+completed	success	docs(release): record verified rc.2 publication and preserved assets	CI	main	push	38601161818	1m23s	2026-10-14T16:48:10Z
+```
+
+
+第二轮六 job 全绿
+
+实际命令：
+```text
+gh run view 38639513321 --repo sle58083/yuchen-panel --json status,conclusion,jobs --jq '{status,conclusion,jobs:[.jobs[]|{name,status,conclusion}]}'
+```
+
+原始输出：
+```text
+{"conclusion":"success","jobs":[{"conclusion":"success","name":"Docker Compose builds","status":"completed"},{"conclusion":"success","name":"Shell syntax and ShellCheck","status":"completed"},{"conclusion":"success","name":"Go build, vet and race tests (agent)","status":"completed"},{"conclusion":"success","name":"Frontend build and typecheck","status":"completed"},{"conclusion":"success","name":"Fresh Docker installer integration (Ubuntu 22.04)","status":"completed"},{"conclusion":"success","name":"Go build, vet and race tests (backend)","status":"completed"}],"status":"completed"}
+```
+
+gh run watch 38639513321 --repo sle58083/yuchen-panel --exit-status 退出 0。Docker 阶段耗时较长，最终 run 6m44s success；没有超时跳过或提前打 tag。
+
+## Step 4 · 只创建带注解 rc.3 tag
+
+实际命令：
+```text
+git tag -a v1.0.3-rc.3 -F .git/rc3-tag-message.txt; git cat-file -t v1.0.3-rc.3; git cat-file -p v1.0.3-rc.3
+```
+
+原始输出：
+```text
+object c41bcc2b84fa6a14209baf8f3cf7b2b27de45277
 type commit
-tag v1.0.3-rc.2
-tagger sle58083 <281434516+sle58083@users.noreply.github.com> 1791996252 +0800
+tag v1.0.3-rc.3
+tagger sle58083 <281434516+sle58083@users.noreply.github.com> 1792013472 +0800
 
-v1.0.3-rc.2
+v1.0.3-rc.3
 
-在 v1.0.3-rc.1 基础上：
-- 节点名移除 #xxxx 短 ID 后缀，恢复干净名称（美国 / 日本 / 香港）
-- 同名节点仍自动去重（美国 / 美国 2 / 美国 3），四条导出路径一致
+包月限流量售卖功能。
 
-升级会轮换 JWT 密钥，需要重新登录。
+新增：
+- 按客户维度流量统计（Xray Stats API，仅本机监听）
+- 入站标识改用客户 ID，避免同名客户串账
+- 流量超限自动停用（到期同样生效）
+- 包月续费自动清零并恢复启用；改备注不触发清零
+- 客户列表 30 秒自动刷新（编辑期间暂停）
+
+实现要点：
+- epoch 游标法处理 Xray 重启与重复上报
+- 溢出保护与跨服务器来源授权
+
+⚠️ 限额执行存在 30-60 秒采样延迟（Agent 心跳间隔 30 秒）。
+建议流量上限预留余量。
 ```
 
-cat-file -t 输出 tag。普通推送实际输出：
+cat-file -t 实际输出 tag；推送实际输出：
 ```text
 To https://github.com/sle58083/yuchen-panel.git
- * [new tag]         v1.0.3-rc.2 -> v1.0.3-rc.2
+ * [new tag]         v1.0.3-rc.3 -> v1.0.3-rc.3
 ```
 
-## Step 6 · CI Release 构建与回填
+远端注解对象及剥离后的源码提交
+
+实际命令：
+```text
+git ls-remote origin refs/tags/v1.0.3-rc.3 'refs/tags/v1.0.3-rc.3^{}'
+```
+
+原始输出：
+```text
+f7ecadba99b0b8837fb02b9ca8ec526762b7cda7	refs/tags/v1.0.3-rc.3
+c41bcc2b84fa6a14209baf8f3cf7b2b27de45277	refs/tags/v1.0.3-rc.3^{}
+```
+
+
+## Step 5 · Release 由 tag 自动触发并成功
 
 实际命令：
 ```text
@@ -243,17 +284,17 @@ gh run list --repo sle58083/yuchen-panel --workflow release.yml --limit 3
 
 原始输出：
 ```text
+completed	success	chore(release): prepare rc.3 version and monthly quota release notes	Build Release	v1.0.3-rc.3	push	38640897788	1m6s	2026-10-14T21:31:16Z
 completed	success	Merge pull request #7 from sle58083/fix/audit-batch4-test-harness	Build Release	v1.0.3-rc.2	push	38600612485	1m11s	2026-10-14T16:44:18Z
 completed	success	merge: audit round 1 security and client compatibility fixes	Build Release	v1.0.3-rc.1	push	38548305975	48s	2026-10-14T10:15:37Z
-completed	success	fix: 修复 VMess/Shadowsocks 入站测试超时(-1)	Build Release	v1.0.2	push	35082203560	55s	2026-09-16T09:56:14Z
 ```
 
 
-Release workflow 结论
+Release job 结论
 
 实际命令：
 ```text
-gh run view 38600612485 --repo sle58083/yuchen-panel --json status,conclusion,jobs（投影 job 状态）
+gh run view 38640897788 --repo sle58083/yuchen-panel --json status,conclusion,jobs（投影 job 结论）
 ```
 
 原始输出：
@@ -261,51 +302,51 @@ gh run view 38600612485 --repo sle58083/yuchen-panel --json status,conclusion,jo
 {"conclusion":"success","jobs":[{"conclusion":"success","name":"build","status":"completed"}],"status":"completed"}
 ```
 
-gh run watch 38600612485 --exit-status 退出 0。完整日志 .codex-release-inspect/rc2/release-full-log.txt。workflow 完成发布后，独立下载 ZIP 与 SHA256SUMS 校验。
+gh run watch 38640897788 --repo sle58083/yuchen-panel --exit-status 退出 0；完整日志保存在 .codex-release-inspect/rc3/release-full-log.txt。由 CI 编译、打包、创建新资产、下载校验及回填，未手动上传资产。
 
-实际 Release 页面和 CI 资产
+实际 Release 页面信息和 CI 资产
 
 实际命令：
 ```text
-gh release view v1.0.3-rc.2 --repo sle58083/yuchen-panel --json tagName,isPrerelease,url,publishedAt,assets
+gh release view v1.0.3-rc.3 --repo sle58083/yuchen-panel --json tagName,isPrerelease,url,publishedAt,assets
 ```
 
 原始输出：
 ```text
-{"assets":[{"apiUrl":"https://api.github.com/repos/sle58083/yuchen-panel/releases/assets/640999541","contentType":"application/octet-stream","createdAt":"2026-10-14T16:45:20Z","digest":"sha256:4521f28d1c671cc322b9ae027eacdc99a5ffcab3d2fb66afb005bff291f53a8c","downloadCount":0,"id":"RA_kwDOUcPjjc4mNOB1","label":"","name":"SHA256SUMS","size":95,"state":"uploaded","updatedAt":"2026-10-14T16:45:20Z","url":"https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.2/SHA256SUMS"},{"apiUrl":"https://api.github.com/repos/sle58083/yuchen-panel/releases/assets/640999538","contentType":"application/zip","createdAt":"2026-10-14T16:45:20Z","digest":"sha256:91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd","downloadCount":0,"id":"RA_kwDOUcPjjc4mNOBy","label":"","name":"yuchen-panel-v1.0.3-rc.2.zip","size":5667107,"state":"uploaded","updatedAt":"2026-10-14T16:45:21Z","url":"https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.2/yuchen-panel-v1.0.3-rc.2.zip"}],"isPrerelease":true,"publishedAt":"2026-10-14T16:45:21Z","tagName":"v1.0.3-rc.2","url":"https://github.com/sle58083/yuchen-panel/releases/tag/v1.0.3-rc.2"}
+{"assets":[{"apiUrl":"https://api.github.com/repos/sle58083/yuchen-panel/releases/assets/641732658","contentType":"application/octet-stream","createdAt":"2026-10-14T21:32:13Z","digest":"sha256:df6e41934043a7f62e2efbf95e994cbd44308b7edaf1110cd4739398cd5dae42","downloadCount":0,"id":"RA_kwDOUcPjjc4mQBAy","label":"","name":"SHA256SUMS","size":95,"state":"uploaded","updatedAt":"2026-10-14T21:32:14Z","url":"https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.3/SHA256SUMS"},{"apiUrl":"https://api.github.com/repos/sle58083/yuchen-panel/releases/assets/641732657","contentType":"application/zip","createdAt":"2026-10-14T21:32:13Z","digest":"sha256:b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe","downloadCount":0,"id":"RA_kwDOUcPjjc4mQBAx","label":"","name":"yuchen-panel-v1.0.3-rc.3.zip","size":5707667,"state":"uploaded","updatedAt":"2026-10-14T21:32:14Z","url":"https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.3/yuchen-panel-v1.0.3-rc.3.zip"}],"isPrerelease":true,"publishedAt":"2026-10-14T21:32:15Z","tagName":"v1.0.3-rc.3","url":"https://github.com/sle58083/yuchen-panel/releases/tag/v1.0.3-rc.3"}
 ```
 
 
-独立 sha256sum 原始结果
+独立下载的 ZIP 实测 SHA256
 
 实际命令：
 ```text
-gh release download v1.0.3-rc.2 --repo sle58083/yuchen-panel --dir .codex-release-inspect/rc2/download --pattern 'yuchen-panel-v1.0.3-rc.2.zip' --pattern SHA256SUMS
-wsl.exe -d Ubuntu -- sha256sum '/mnt/e/gpt保存/2026-10-13/linux-xray-sing-box-v2ray-shell/work/audit-fix/.codex-release-inspect/rc2/download/yuchen-panel-v1.0.3-rc.2.zip'
+gh release download v1.0.3-rc.3 --repo sle58083/yuchen-panel --dir .codex-release-inspect/rc3/download --pattern 'yuchen-panel-v1.0.3-rc.3.zip' --pattern SHA256SUMS
+wsl.exe -d Ubuntu -- sha256sum '/mnt/e/gpt保存/2026-10-13/linux-xray-sing-box-v2ray-shell/work/audit-fix/.codex-release-inspect/rc3/download/yuchen-panel-v1.0.3-rc.3.zip'
 ```
 
 原始输出：
 ```text
-91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd  /mnt/e/gpt保存/2026-10-13/linux-xray-sing-box-v2ray-shell/work/audit-fix/.codex-release-inspect/rc2/download/yuchen-panel-v1.0.3-rc.2.zip
+b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe  /mnt/e/gpt保存/2026-10-13/linux-xray-sing-box-v2ray-shell/work/audit-fix/.codex-release-inspect/rc3/download/yuchen-panel-v1.0.3-rc.3.zip
 ```
 
 
-ZIP / SHA256SUMS / manifest 三者逐字符一致
+三者逐字符比对输出（全部相同）
 
 实际命令：
 ```text
-Get-FileHash -Algorithm SHA256，读取下载的 SHA256SUMS；用 -cne 与 main manifest .sha256 比较
+Get-FileHash -Algorithm SHA256；读取下载的 SHA256SUMS 与 main 清单；用 PowerShell -cne 进行大小写敏感比较
 ```
 
 原始输出：
 ```text
-ZIP=91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd
-SHA256SUMS=91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd
-manifest=91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd
+ZIP=b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe
+SHA256SUMS=b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe
+manifest=b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe
 ```
 
 
-main/version.json 原始内容
+main/version.json 全文
 
 实际命令：
 ```text
@@ -315,27 +356,28 @@ main/version.json 原始内容
 原始输出：
 ```text
 {
-  "latest": "1.0.3-rc.2",
-  "version": "1.0.3-rc.2",
+  "latest": "1.0.3-rc.3",
+  "version": "1.0.3-rc.3",
   "codename": "rc",
-  "package": "yuchen-panel-v1.0.3-rc.2.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.2/yuchen-panel-v1.0.3-rc.2.zip",
-  "sha256": "91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd",
+  "package": "yuchen-panel-v1.0.3-rc.3.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.3/yuchen-panel-v1.0.3-rc.3.zip",
+  "sha256": "b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-10-14T16:45:22.871404Z",
+  "released_at": "2026-10-14T21:32:16.487868Z",
   "changelog": [
-    "审计修复 RC：认证、升级与安装路径安全修复",
-    "sing-box/v2rayN/Clash/Shadowrocket 客户端兼容",
-    "三档节点预设，默认抗封锁档（用户墙内客户策略）",
-    "Docker Nginx 路由及 Doctor 模式检查修复",
+    "包月限流量：按客户 ID 汇总 Xray 上传与下载，Stats API 仅监听本机",
+    "epoch 与服务器游标持久化，处理重启与重复上报",
+    "到期或超限停用；延长到期即续费，清零并恢复启用",
+    "客户列表按字节显示本周期用量，30 秒刷新且编辑时暂停",
+    "正常在线限额执行通常有约 30–60 秒延迟，异常时可能更久",
     "升级会轮换 JWT 密钥，旧会话失效，需要重新登录",
-    "服务器规格提示依赖新版 Agent"
+    "需要匹配的新版 API 与 Agent，VPS 真机流量验收仍待用户执行"
   ]
 }
 ```
 
 
-CI 清单回填提交
+CI 回填 manifest 的实际提交
 
 实际命令：
 ```text
@@ -344,12 +386,12 @@ git pull --ff-only origin main; git show -s --format='%H %s' HEAD
 
 原始输出：
 ```text
-b123bfb3de7794e447a6642289997092e4b8f2c1 release: publish verified manifest for v1.0.3-rc.2
+38a24ea3ad17941c590823f217996ee706e7c3c4 release: publish verified manifest for v1.0.3-rc.3
 ```
 
-本轮未手改 version.json。新 Release 创建时 workflow 使用沿用的 RELEASE-NOTES.md，随后只更新新 rc.2 Release 的说明为本轮变化：gh release edit v1.0.3-rc.2 --notes-file .codex-release-inspect/rc2/release-notes.txt。未上传/替换资产、未修改旧 Release。
+latest/version 都为 1.0.3-rc.3、codename=rc、package/download_url 指向新 ZIP。对所有字段作严格比对，未手工改 version.json 或 SHA。
 
-## Step 7 · 旧资产与安装入口核验
+既有 Release 列表
 
 实际命令：
 ```text
@@ -358,6 +400,7 @@ gh release list --repo sle58083/yuchen-panel --limit 6
 
 原始输出：
 ```text
+Yuchen Panel v1.0.3-rc.3	Pre-release	v1.0.3-rc.3	2026-10-14T21:32:15Z
 Yuchen Panel v1.0.3-rc.2	Pre-release	v1.0.3-rc.2	2026-10-14T16:45:21Z
 Yuchen Panel v1.0.3-rc.1	Pre-release	v1.0.3-rc.1	2026-10-14T10:16:18Z
 Yuchen Panel v1.0.2	Latest	v1.0.2	2026-09-16T09:57:04Z
@@ -366,24 +409,26 @@ Yuchen Panel v1.0.0		v1.0.0	2026-09-15T16:43:49Z
 ```
 
 
-发布前后旧资产核对
+既有资产发布前后核对
 
 实际命令：
 ```text
-gh api repos/sle58083/yuchen-panel/releases --paginate；逐一核对旧 release/asset id、size、digest、updated_at，并断言下载计数不下降
+gh api repos/sle58083/yuchen-panel/releases --paginate；比较旧 Release id/updated_at，旧资产 id/name/size/digest/created_at/updated_at，并断言下载计数不下降
 ```
 
 原始输出：
 ```text
-v1.0.3-rc.1: id=640000957 name=SHA256SUMS size=95 digest=sha256:c6137b9a6a580c31c2c20f95313e565013d1bb009776589cfc5936bdb8c66802 download_count=1->1 updated_at=10/14/2026 10:16:17 unchanged
-v1.0.3-rc.1: id=640000960 name=yuchen-panel-v1.0.3-rc.1.zip size=5655759 digest=sha256:f4b97180e4b7102757974fd773a1beb5067c9c896c734a219084394543af8530 download_count=4->4 updated_at=10/14/2026 10:16:18 unchanged
-v1.0.2: id=567675591 name=yuchen-panel-v1.0.2-stable.zip size=5533673 digest=sha256:7b64a19b908f7485b26858ad80340f2af6333605e2223fadb85c497d195602ea download_count=13->13 updated_at=09/16/2026 09:57:03 unchanged
-v1.0.1: id=566170691 name=yuchen-panel-v1.0.1-stable.zip size=5532482 digest=sha256:230da902bdf030d072c5064f476b9a8b3e5069ecc7b7899a0c69ac45eadcb3f8 download_count=6->6 updated_at=09/15/2026 17:30:02 unchanged
-v1.0.0: id=566095185 name=yuchen-panel-v1.0.0-stable.zip size=5515117 digest=sha256:7104ef9fd6e30332d991fa165284102474fe2c77f2d9d378520bc31b7bb3d976 download_count=8->8 updated_at=09/15/2026 16:43:49 unchanged
+v1.0.3-rc.2: id=640999541 name=SHA256SUMS size=95 digest=sha256:4521f28d1c671cc322b9ae027eacdc99a5ffcab3d2fb66afb005bff291f53a8c downloads=1->1; metadata unchanged
+v1.0.3-rc.2: id=640999538 name=yuchen-panel-v1.0.3-rc.2.zip size=5667107 digest=sha256:91baadeaed1615eb079931c76fe6c90884b2f749c951d752e36868c5ea4b98dd downloads=5->5; metadata unchanged
+v1.0.3-rc.1: id=640000957 name=SHA256SUMS size=95 digest=sha256:c6137b9a6a580c31c2c20f95313e565013d1bb009776589cfc5936bdb8c66802 downloads=1->1; metadata unchanged
+v1.0.3-rc.1: id=640000960 name=yuchen-panel-v1.0.3-rc.1.zip size=5655759 digest=sha256:f4b97180e4b7102757974fd773a1beb5067c9c896c734a219084394543af8530 downloads=4->4; metadata unchanged
+v1.0.2: id=567675591 name=yuchen-panel-v1.0.2-stable.zip size=5533673 digest=sha256:7b64a19b908f7485b26858ad80340f2af6333605e2223fadb85c497d195602ea downloads=13->13; metadata unchanged
+v1.0.1: id=566170691 name=yuchen-panel-v1.0.1-stable.zip size=5532482 digest=sha256:230da902bdf030d072c5064f476b9a8b3e5069ecc7b7899a0c69ac45eadcb3f8 downloads=6->6; metadata unchanged
+v1.0.0: id=566095185 name=yuchen-panel-v1.0.0-stable.zip size=5515117 digest=sha256:7104ef9fd6e30332d991fa165284102474fe2c77f2d9d378520bc31b7bb3d976 downloads=8->8; metadata unchanged
 ```
 
 
-安装入口状态和前五行
+一行安装入口 HTTP 状态及前五行
 
 实际命令：
 ```text
@@ -400,17 +445,65 @@ export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 export NEEDRESTART_MODE="${NEEDRESTART_MODE:-a}"
 ```
 
-rc.1 ZIP 下载计数 4→4，v1.0.2 ZIP 13→13；ID/digest/时间均不变。旧资产完整保留。
+## 当前状态与范围
 
-## 升级到 v1.0.3-rc.2
+- PR #8 已合并，分支 fix/task13-monthly-traffic 保留；旧本地备份分支保留。
+- rc.3 注解对象 f7ecadba99b0b8837fb02b9ca8ec526762b7cda7，指向准备提交 c41bcc2b84fa6a14209baf8f3cf7b2b27de45277。
+- CI 回填提交 38a24ea3ad17941c590823f217996ee706e7c3c4；本报告随后为纯文档提交，不改变 tag 或已发布 ZIP。
+- rc.2 ZIP 下载计数 5→5，rc.1 4→4，v1.0.2 13→13；资产 ID、摘要和时间元数据不变。所有旧 Release 未被修改。
+- 没有正式版 tag、force push、rebase、squash、clobber、手工修改 manifest/SHA 或手动上传。
+- 无本轮失败步骤；第二轮 Docker 耗时较长但最终真实 success。
+
+## 升级到 v1.0.3-rc.3
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/sle58083/yuchen-panel/main/install.sh)
 ```
 
-⚠️ 需要重新登录：JWT 签名密钥轮换是刻意的安全行为。
+⚠️ 需要重新登录：安装／升级轮换 JWT 签名密钥，是刻意的安全行为。
+要同时更新 API 和 Agent；只刷新前端不能提供按客户计量。Task13 报告里的“当时未发布”是历史阶段说明，此版本已由 CI 正式创建为 RC。
 
-本版变化：节点名不再自动带 #xxxx 后缀，之前“美国 #80ac”现在“美国”；同名仍自动区分“美国 / 美国 2 / 美国 3”。
-默认抗封锁档不变；CPU/内存提示依赖新版 Agent。
+### 包月限流量售卖
 
-用户 VPS 安装与设备实际验收待用户执行。未创建 v1.0.3 正式 tag，未 squash/force push/rebase，备份与审计分支保留。本报告为发布校验后的文档提交，不改变已发布包或 tag。
+计费周期：
+
+- 到期时间与流量上限任一触发即停用。
+- 续费（延长到期时间）后流量归零，进入新周期并恢复启用。
+- 改备注、提前到期不会清零。
+- 默认套餐 30 天；起点为新到期减套餐天数，延长会立即清零。
+
+流量统计：
+
+- 按客户 ID 统计上传＋下载，从启用新 Stats 后的该客户连接开始；过去未启用统计的流量不能按客户追溯。
+- Xray 重启保留已结算累计；未采样的异常退出尾部不可恢复，详见 TASK13-REPORT.md。
+- 达到限额自动停用；0 为不限；GB 按 2^30 bytes 换算。
+- 客户列表 30 秒刷新，编辑窗口打开时暂停。
+
+### 限额执行延迟
+
+Agent 默认每 30 秒上报。正常在线时，超量到配置撤销通常约 30–60 秒，期间仍可使用；离线、网络失败或配置应用失败可能更久，这不是硬时限保证。
+
+任务给出的余量试用值：
+
+| 售卖规格 | 任务建议的内部试用上限 |
+|---|---|
+| 100 GB/月 | 90 GB |
+| 500 GB/月 | 450 GB |
+
+这不是经过本次真机流量测试得到的承诺。较低限额可能提前停用，不能把它当作足量交付保证；余量需依据峰值并发吞吐与真实同步延迟验证。
+
+### 五步自测（纠正整数 GB 限额限制）
+
+1. 新建测试客户，绑定测试节点，设未来到期和 1 GB 上限。
+2. 客户端下载约 100 MiB。
+3. 等待上报与列表刷新，核对非零 traffic_used_bytes 和界面用量，计入上传＋下载。
+4. 继续使本周期总量达到／超过 1 GB，核对 Enabled=false、Agent 新配置应用以及缓存凭据无法连接。
+5. 延长到期，核对用量归零、启用恢复，并在配置同步后重连。
+
+现有字段仅接受整数 GB，不能设置任务示例中的 10 MB。本轮不增加 MB 功能、不修改数据库来冒充验收。
+VPS 实际流量、重启计量与停用／续费验证仍待用户执行，本轮状态为 **SKIPPED（未执行 VPS 部署或客户真实流量测试）**。不拿 CI、源码配置 check 或本地空 StatsService 查询替代这一结论。
+
+发布页：https://github.com/sle58083/yuchen-panel/releases/tag/v1.0.3-rc.3
+合并 CI：https://github.com/sle58083/yuchen-panel/actions/runs/38639041909
+准备 CI：https://github.com/sle58083/yuchen-panel/actions/runs/38639513321
+Release CI：https://github.com/sle58083/yuchen-panel/actions/runs/38640897788
