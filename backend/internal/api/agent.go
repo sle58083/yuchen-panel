@@ -26,6 +26,12 @@ func (r *Router) agentHeartbeat(w http.ResponseWriter, req *http.Request) {
 	r.store.Mu.Lock()
 	defer r.store.Mu.Unlock()
 	s := r.store.Data.Servers[body.ServerID]
+	previousServer := s
+	previousClients := make(map[string]model.Client, len(r.store.Data.Clients))
+	for id, c := range r.store.Data.Clients {
+		previousClients[id] = c
+	}
+	r.accountTrafficLocked(body)
 	s.Status = "online"
 	s.AgentVersion = body.AgentVersion
 	s.XrayVersion = body.XrayVersion
@@ -45,7 +51,12 @@ func (r *Router) agentHeartbeat(w http.ResponseWriter, req *http.Request) {
 	s.DownloadTotal = body.DownloadTotal
 	s.UpdatedAt = time.Now()
 	r.store.Data.Servers[s.ID] = s
-	_ = r.store.SaveLocked()
+	if err := r.store.SaveLocked(); err != nil {
+		r.store.Data.Servers[body.ServerID] = previousServer
+		r.store.Data.Clients = previousClients
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "traffic persistence failed"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "next_interval_seconds": 30})
 }
 
@@ -69,6 +80,7 @@ func (r *Router) agentSync(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "server not registered"})
 		return
 	}
+	r.enforceBillingLocked(time.Now())
 	nodes := make([]model.Node, 0)
 	for _, n := range r.store.Data.Nodes {
 		if n.ServerID == body.ServerID && n.Enabled {

@@ -19,6 +19,7 @@ func (r *Router) clients(w http.ResponseWriter, req *http.Request) {
 		defer r.store.Mu.RUnlock()
 		list := make([]model.Client, 0, len(r.store.Data.Clients))
 		for _, item := range r.store.Data.Clients {
+			migrateTraffic(&item)
 			// 旧客户没有持久化密码时按确定性规则补全，保证前端 trojan:// 分享链接
 			// 与 Xray 服务端 clients 密码一致。
 			if strings.TrimSpace(item.Password) == "" {
@@ -47,6 +48,13 @@ func (r *Router) clients(w http.ResponseWriter, req *http.Request) {
 		}
 		// 到期时间为空表示长期可用。
 		body.Enabled = true
+		body.TrafficUsedGB, body.TrafficUsedBytes = 0, 0
+		body.TrafficCursors = nil
+		body.TrafficResetAt = time.Time{}
+		body.BillingCycleStart = now
+		if body.BillingCycleDays == 0 {
+			body.BillingCycleDays = 30
+		}
 		body.CreatedAt = now
 		body.UpdatedAt = now
 		r.store.Mu.Lock()
@@ -105,6 +113,7 @@ func (r *Router) clientByID(w http.ResponseWriter, req *http.Request) {
 	}
 	switch req.Method {
 	case http.MethodGet:
+		migrateTraffic(&item)
 		if strings.TrimSpace(item.Password) == "" {
 			item.Password = xray.TrojanClientPassword(item)
 		}
@@ -132,9 +141,14 @@ func (r *Router) clientByID(w http.ResponseWriter, req *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+		preserveAndRenewBilling(&body, item, time.Now())
 		r.store.Data.Clients[id] = body
 		r.store.AddLog(currentClaims(req).Username, "client.update", clientIP(req), id)
-		_ = r.store.SaveLocked()
+		if err := r.store.SaveLocked(); err != nil {
+			r.store.Data.Clients[id] = item
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "billing persistence failed"})
+			return
+		}
 		writeJSON(w, http.StatusOK, body)
 	case http.MethodDelete:
 		delete(r.store.Data.Clients, id)
@@ -149,6 +163,7 @@ func (r *Router) clientByID(w http.ResponseWriter, req *http.Request) {
 func (r *Router) validateClientLocked(c *model.Client) error {
 	c.Username = strings.TrimSpace(c.Username)
 	c.Email = strings.TrimSpace(c.Email)
+	c.Remark = strings.TrimSpace(c.Remark)
 	if c.Username == "" {
 		return fmt.Errorf("请填写客户名")
 	}
@@ -187,8 +202,11 @@ func (r *Router) validateClientLocked(c *model.Client) error {
 		return fmt.Errorf("固定出口客户只能绑定一条中转线路")
 	}
 	c.RelayRouteIDs = relayClean
-	if c.TrafficLimitGB < 0 {
+	if c.TrafficLimitGB < 0 || c.TrafficLimitGB > (int64(1)<<33)-1 {
 		return fmt.Errorf("流量限制不能小于 0")
+	}
+	if c.BillingCycleDays < 0 || c.BillingCycleDays > 366 {
+		return fmt.Errorf("计费周期天数必须为 1-366（空值默认为 30）")
 	}
 	return nil
 }
@@ -232,6 +250,10 @@ func (r *Router) createClientWithSocks5Relay(w http.ResponseWriter, req *http.Re
 	body.LandingExitID = strings.TrimSpace(body.LandingExitID)
 	if body.Username == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请填写客户名称"})
+		return
+	}
+	if body.TrafficLimitGB < 0 || body.TrafficLimitGB > (int64(1)<<33)-1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid traffic limit"})
 		return
 	}
 	if body.LandingExitID == "" {
@@ -293,9 +315,9 @@ func (r *Router) createClientWithSocks5Relay(w http.ResponseWriter, req *http.Re
 		}
 	}
 	// 到期时间为空表示长期可用。
-	if client.TrafficLimitGB == 0 {
-		client.TrafficLimitGB = 100
-	}
+	client.BillingCycleStart = now
+	client.BillingCycleDays = 30
+	client.TrafficResetAt = time.Time{}
 	name := strings.TrimSpace(body.RouteName)
 	if name == "" {
 		name = fmt.Sprintf("%s-%s固定出口", body.Username, exit.Host)

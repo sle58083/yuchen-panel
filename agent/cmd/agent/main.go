@@ -25,19 +25,22 @@ import (
 var version = "dev"
 
 type Heartbeat struct {
-	CPUCores      int     `json:"cpu_cores,omitempty"`
-	MemTotalBytes int64   `json:"memory_total_bytes,omitempty"`
-	ServerID      string  `json:"server_id"`
-	Hostname      string  `json:"hostname"`
-	AgentVersion  string  `json:"agent_version"`
-	XrayVersion   string  `json:"xray_version"`
-	ConfigHash    string  `json:"config_hash"`
-	LastMessage   string  `json:"last_message"`
-	CPUUsage      float64 `json:"cpu_usage"`
-	MemoryUsage   float64 `json:"memory_usage"`
-	DiskUsage     float64 `json:"disk_usage"`
-	UploadTotal   int64   `json:"upload_total"`
-	DownloadTotal int64   `json:"download_total"`
+	TrafficByClient map[string]ClientTraffic `json:"traffic_by_client,omitempty"`
+	TrafficEpoch    string                   `json:"traffic_epoch,omitempty"`
+	TrafficSampleAt time.Time                `json:"traffic_sample_at,omitempty"`
+	CPUCores        int                      `json:"cpu_cores,omitempty"`
+	MemTotalBytes   int64                    `json:"memory_total_bytes,omitempty"`
+	ServerID        string                   `json:"server_id"`
+	Hostname        string                   `json:"hostname"`
+	AgentVersion    string                   `json:"agent_version"`
+	XrayVersion     string                   `json:"xray_version"`
+	ConfigHash      string                   `json:"config_hash"`
+	LastMessage     string                   `json:"last_message"`
+	CPUUsage        float64                  `json:"cpu_usage"`
+	MemoryUsage     float64                  `json:"memory_usage"`
+	DiskUsage       float64                  `json:"disk_usage"`
+	UploadTotal     int64                    `json:"upload_total"`
+	DownloadTotal   int64                    `json:"download_total"`
 }
 
 type SyncRequest struct {
@@ -94,6 +97,13 @@ func main() {
 	log.Printf("Yuchen Agent %s started, panel=%s, server_id=%s, config=%s", version, cfg.PanelBase, cfg.ServerID, cfg.ConfigPath)
 	for {
 		hash := fileHash(cfg.ConfigPath)
+		// Flush cumulative counters before a config apply can restart Xray.
+		hb := collectHeartbeat(cfg, hostname, hash, lastMessage)
+		if err := heartbeat(cfg, hb); err != nil {
+			log.Printf("heartbeat failed (config apply postponed): %v", err)
+			time.Sleep(cfg.Interval)
+			continue
+		}
 		if reloadPending {
 			hash = ""
 		} // Disk contents do not prove reload succeeded.
@@ -119,10 +129,6 @@ func main() {
 			}
 		} else {
 			lastMessage = "config already up to date"
-		}
-		hb := collectHeartbeat(cfg, hostname, hash, lastMessage)
-		if err := heartbeat(cfg, hb); err != nil {
-			log.Printf("heartbeat failed: %v", err)
 		}
 		interval := cfg.Interval
 		if syncResp.NextIntervalSeconds > 0 {
@@ -242,11 +248,19 @@ func applyXrayConfig(cfg Config, syncResp SyncResponse) error {
 func collectHeartbeat(cfg Config, hostname, hash, msg string) Heartbeat {
 	up, down := networkTotals()
 	memoryUsed, memoryTotal := memoryMetrics()
-	return Heartbeat{
+	hb := Heartbeat{
 		ServerID: cfg.ServerID, Hostname: hostname, AgentVersion: version, XrayVersion: xrayVersion(), ConfigHash: hash, LastMessage: msg,
 		CPUCores: runtime.NumCPU(), MemTotalBytes: memoryTotal,
 		CPUUsage: loadAverage(), MemoryUsage: memoryUsed, DiskUsage: diskUsage("/"), UploadTotal: up, DownloadTotal: down,
 	}
+	traffic, epoch, err := collectXrayTraffic(cfg)
+	if err != nil {
+		hb.LastMessage += "; stats unavailable: " + err.Error()
+		log.Printf("Stats unavailable: %v", err)
+	} else {
+		hb.TrafficByClient, hb.TrafficEpoch, hb.TrafficSampleAt = traffic, epoch, time.Now().UTC()
+	}
+	return hb
 }
 
 func runShell(command string) (string, error) {

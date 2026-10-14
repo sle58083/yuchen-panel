@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { api } from '../api'
 import { copyText } from '../clipboard'
 import { buildClashDownloadUrl, buildClashSubscriptionUrl, buildClientMultiShare, buildShortNodeUrl, buildSubscriptionUrl, isClientShareNode, isQrShareFormat, nodesForClient, qrImageUrl, relayNodesForClient, shareFormatLabel, shareFormatOptions, subscriptionFormatOptions, type SubscriptionFormat, type ShareFormat } from '../share'
@@ -112,6 +112,8 @@ function editClient(c:any) {
   form.value = {
     username: c.username || '',
     email: c.email || '',
+    remark: c.remark || '',
+    billing_cycle_days: c.billing_cycle_days || 30,
     traffic_limit_gb: c.traffic_limit_gb || 0,
     expire_at: toLocalInput(c.expire_at),
     enabled: c.enabled !== false,
@@ -155,7 +157,7 @@ async function createDirectClient() {
     const body={
       username: directForm.value.username,
       email: directForm.value.email,
-      traffic_limit_gb:Number(directForm.value.traffic_limit_gb || 100),
+      traffic_limit_gb:parseTrafficLimit(directForm.value.traffic_limit_gb),
       expire_at: directExpireMode.value === 'custom' && directForm.value.expire_at ? new Date(directForm.value.expire_at).toISOString() : undefined,
       enabled:true,
       node_ids:[directForm.value.node_id],
@@ -177,7 +179,7 @@ async function createFixedExitClient() {
   const port = Number(fixedForm.value.relay_port)
   if (!port || port < 10000 || port > 60000) { error.value='中转端口建议使用 10000-60000。'; return }
   try {
-    const body={...fixedForm.value, relay_port:port, traffic_limit_gb:Number(fixedForm.value.traffic_limit_gb || 100), expire_at: fixedExpireMode.value === 'custom' && fixedForm.value.expire_at ? new Date(fixedForm.value.expire_at).toISOString() : undefined}
+    const body={...fixedForm.value, relay_port:port, traffic_limit_gb:parseTrafficLimit(fixedForm.value.traffic_limit_gb), expire_at: fixedExpireMode.value === 'custom' && fixedForm.value.expire_at ? new Date(fixedForm.value.expire_at).toISOString() : undefined}
     const res = await api('/api/clients/create-socks5-relay', {method:'POST', body:JSON.stringify(body)})
     message.value = `固定出口客户已创建：${res.client.username}，入口 ${res.relay.relay_host}:${res.relay.relay_port} → 出口 ${res.exit.host}:${res.exit.port}。该客户固定绑定这一条线路，不会随机切换出口。`
     showFixedClientModal.value = false
@@ -189,7 +191,7 @@ async function createFixedExitClient() {
 async function saveClient() {
   error.value=''; message.value=''
   try {
-    const body={...form.value, expire_at: form.value.expire_at ? new Date(form.value.expire_at).toISOString() : undefined}
+    const body={...form.value, traffic_limit_gb:parseTrafficLimit(form.value.traffic_limit_gb), expire_at: form.value.expire_at ? new Date(form.value.expire_at).toISOString() : undefined}
     if (editingId.value) {
       await api(`/api/clients/${editingId.value}`,{method:'PUT',body:JSON.stringify(body)})
       message.value='客户已保存。Agent 会在下一次同步时更新 Xray clients。'
@@ -285,7 +287,16 @@ function clientPrimaryNode(c:any) {
   return list[0]
 }
 function statusText(c:any) { return c.enabled === false ? '停用' : '启用' }
-function trafficText(c:any) { return `${c.traffic_used_gb || 0} / ${c.traffic_limit_gb || 0} GB` }
+function parseTrafficLimit(value:any) {
+  const limit = value === '' ? 100 : Number(value ?? 100)
+  if (!Number.isSafeInteger(limit) || limit < 0 || limit > 8589934591) throw new Error('流量上限须为非负整数 GB，0 表示不限流量')
+  return limit
+}
+function trafficText(c:any) {
+  const used = Number(c.traffic_used_bytes ?? Number(c.traffic_used_gb || 0) * 2**30) / 2**30
+  const limit = Number(c.traffic_limit_gb || 0) > 0 ? `${c.traffic_limit_gb} GB` : '不限流量'
+  return `本周期用量 ${used.toLocaleString(undefined,{maximumFractionDigits:6})} / ${limit}（${(c.billing_cycle_start && !c.billing_cycle_start.startsWith('0001') ? fmtTime(c.billing_cycle_start) : '未记录')} — ${fmtTime(c.expire_at)}）`
+}
 function setShareTab(v: ShareTab) { shareTab.value = v }
 function setAdvancedRelayRoute(event: Event) {
   const value = (event.target as HTMLSelectElement).value
@@ -324,7 +335,20 @@ function qrModeHint() {
   if (shareTab.value === 'subscription') return '订阅二维码用于批量导入和后续统一更新；HTTP 订阅可能被 v2rayN 拦截。'
   return '当前二维码为单节点配置二维码。'
 }
-onMounted(load)
+let refreshTimer: ReturnType<typeof setInterval> | undefined
+let polling = false
+let active = true
+async function refreshUsage() {
+  if (polling || showAdvancedClientForm.value || showFixedClientModal.value) return
+  polling = true
+  try {
+    const latest = await api('/api/clients')
+    if (active && !showAdvancedClientForm.value && !showFixedClientModal.value) clients.value = latest
+  } catch { /* Keep the last successful sample; do not interrupt editing. */ }
+  finally { polling = false }
+}
+onMounted(() => { load(); refreshTimer = setInterval(refreshUsage,30000) })
+onBeforeUnmount(() => { active = false; if (refreshTimer) clearInterval(refreshTimer) })
 </script>
 <template>
   <div v-if="copyToast" class="copy-toast">{{ copyToast }}</div>
@@ -372,7 +396,7 @@ onMounted(load)
         <div class="form grid-2 compact-form">
           <label><span>客户名</span><input v-model="directForm.username" placeholder="客户A" /></label>
           <label><span>邮箱</span><input v-model="directForm.email" placeholder="可空" /></label>
-          <label><span>流量 GB（仅展示，当前不执行限额）</span><input v-model.number="directForm.traffic_limit_gb" type="number" /></label>
+          <label><span>本周期流量上限 GB（0 = 不限）</span><input v-model.number="directForm.traffic_limit_gb" type="number" /></label>
           <label><span>到期设置</span><select v-model="directExpireMode"><option value="long">长期可用</option><option value="custom">指定到期时间</option></select><em class="field-tip">不设置到期时间时，客户默认长期可用。</em></label>
           <label v-if="directExpireMode === 'custom'" class="wide"><span>到期时间</span><input v-model="directForm.expire_at" type="datetime-local" /></label>
         </div>
@@ -393,7 +417,7 @@ onMounted(load)
       <div class="form grid-2 compact-form">
         <label><span>客户名</span><input v-model="fixedForm.username" placeholder="客户A" /></label>
         <label><span>邮箱</span><input v-model="fixedForm.email" placeholder="可空" /></label>
-        <label><span>流量 GB（仅展示，当前不执行限额）</span><input v-model.number="fixedForm.traffic_limit_gb" type="number" /></label>
+        <label><span>本周期流量上限 GB（0 = 不限）</span><input v-model.number="fixedForm.traffic_limit_gb" type="number" /></label>
         <label><span>到期设置</span><select v-model="fixedExpireMode"><option value="long">长期可用</option><option value="custom">指定到期时间</option></select><em class="field-tip">不设置到期时间时，客户默认长期可用。</em></label>
         <label v-if="fixedExpireMode === 'custom'" class="wide"><span>到期时间</span><input v-model="fixedForm.expire_at" type="datetime-local" /></label>
       </div>
@@ -428,8 +452,8 @@ onMounted(load)
   <div v-if="showAdvancedClientForm" class="form client-form compact-client-form advanced-client-form">
     <label class="field"><span>客户名</span><input v-model="form.username" placeholder="客户名" /></label>
     <label class="field"><span>邮箱</span><input v-model="form.email" placeholder="邮箱，可空" /></label>
-    <label class="field"><span>流量 GB（仅展示，当前不执行限额）</span><input v-model.number="form.traffic_limit_gb" placeholder="流量 GB" /></label>
-    <label class="field"><span>到期时间</span><input v-model="form.expire_at" type="datetime-local" /></label>
+    <label class="field"><span>本周期流量上限 GB（0 = 不限）</span><input v-model.number="form.traffic_limit_gb" placeholder="流量 GB" /></label>
+    <label class="field"><span>到期时间（延长即续费并清零）</span><input v-model="form.expire_at" type="datetime-local" /></label><label class="field"><span>套餐天数（默认 30）</span><input v-model.number="form.billing_cycle_days" type="number" min="1" max="366" /></label><label class="field"><span>备注</span><input v-model="form.remark" /></label>
     <label class="field"><span>状态</span><select v-model="form.enabled"><option :value="true">启用</option><option :value="false">停用</option></select></label>
     <label class="field wide"><span>关联直连入站</span><select v-model="form.node_ids" multiple class="wide"><option v-for="n in clientBindableNodes" :value="n.id" :key="n.id">{{ n.name }}｜{{ n.protocol?.toUpperCase() }}｜{{ n.host }}:{{ n.port }}</option></select></label>
     <label class="field wide"><span>绑定固定出口中转线路（只能选一条）</span><select :value="form.relay_route_ids?.[0] || ''" @change="setAdvancedRelayRoute" class="wide"><option value="">不绑定固定出口</option><option v-for="r in clientBindableRelays" :value="r.id" :key="r.id">{{ r.name }}｜入口 {{ r.relay_host }}:{{ r.relay_port }} → 出口 {{ r.manual_socks_host || r.landing_node_id }}</option></select></label>

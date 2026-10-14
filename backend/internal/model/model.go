@@ -40,32 +40,32 @@ type Server struct {
 }
 
 type Node struct {
-	ID                string    `json:"id"`
-	ServerID          string    `json:"server_id"`
-	Name              string    `json:"name"`
-	Protocol          string    `json:"protocol"`
-	Host              string    `json:"host"`
-	Port              int       `json:"port"`
-	Transport         string    `json:"transport"`
-	Security          string    `json:"security"`
-	SNI               string    `json:"sni"`
-	Path              string    `json:"path"`
-	Fingerprint       string    `json:"fingerprint"`
-	RealityDest       string    `json:"reality_dest"`
-	RealityPrivateKey string    `json:"reality_private_key"`
-	RealityPublicKey  string    `json:"reality_public_key"`
-	RealityShortID    string    `json:"reality_short_id"`
-	RealitySpiderX    string    `json:"reality_spider_x"`
-	SocksUsername     string    `json:"socks_username"`
-	SocksPassword     string    `json:"socks_password"`
-	SocksUDP          bool      `json:"socks_udp"`
+	ID                string `json:"id"`
+	ServerID          string `json:"server_id"`
+	Name              string `json:"name"`
+	Protocol          string `json:"protocol"`
+	Host              string `json:"host"`
+	Port              int    `json:"port"`
+	Transport         string `json:"transport"`
+	Security          string `json:"security"`
+	SNI               string `json:"sni"`
+	Path              string `json:"path"`
+	Fingerprint       string `json:"fingerprint"`
+	RealityDest       string `json:"reality_dest"`
+	RealityPrivateKey string `json:"reality_private_key"`
+	RealityPublicKey  string `json:"reality_public_key"`
+	RealityShortID    string `json:"reality_short_id"`
+	RealitySpiderX    string `json:"reality_spider_x"`
+	SocksUsername     string `json:"socks_username"`
+	SocksPassword     string `json:"socks_password"`
+	SocksUDP          bool   `json:"socks_udp"`
 	// SSMethod/SSPassword 用于 Shadowsocks 入站凭据（Xray SS 入站为单用户：method+password 在 settings 上）。
-	SSMethod         string    `json:"ss_method"`
-	SSPassword       string    `json:"ss_password"`
-	Remark            string    `json:"remark"`
-	Enabled           bool      `json:"enabled"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	SSMethod   string    `json:"ss_method"`
+	SSPassword string    `json:"ss_password"`
+	Remark     string    `json:"remark"`
+	Enabled    bool      `json:"enabled"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type LandingExit struct {
@@ -89,18 +89,24 @@ type LandingExit struct {
 }
 
 type Client struct {
-	ID             string    `json:"id"`
-	Username       string    `json:"username"`
-	Email          string    `json:"email"`
-	UUID           string    `json:"uuid"`
+	Remark   string `json:"remark,omitempty"`
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	UUID     string `json:"uuid"`
 	// Password 用于 Trojan 等基于密码的协议。VMess 复用 UUID，Shadowsocks 凭据保存在入站上。
-	Password       string    `json:"password"`
-	TrafficLimitGB int64     `json:"traffic_limit_gb"`
-	TrafficUsedGB  int64     `json:"traffic_used_gb"`
-	ExpireAt       time.Time `json:"expire_at"`
-	SubscribeToken string    `json:"subscribe_token"`
-	Enabled        bool      `json:"enabled"`
-	NodeIDs        []string  `json:"node_ids"`
+	Password          string                   `json:"password"`
+	TrafficLimitGB    int64                    `json:"traffic_limit_gb"`
+	TrafficUsedGB     int64                    `json:"traffic_used_gb"`
+	TrafficUsedBytes  int64                    `json:"traffic_used_bytes"`
+	BillingCycleStart time.Time                `json:"billing_cycle_start"`
+	BillingCycleDays  int                      `json:"billing_cycle_days"`
+	TrafficResetAt    time.Time                `json:"traffic_reset_at,omitempty"`
+	TrafficCursors    map[string]TrafficCursor `json:"traffic_cursors,omitempty"`
+	ExpireAt          time.Time                `json:"expire_at"`
+	SubscribeToken    string                   `json:"subscribe_token"`
+	Enabled           bool                     `json:"enabled"`
+	NodeIDs           []string                 `json:"node_ids"`
 	// RelayRouteIDs 用于客户固定出口绑定：客户只能使用绑定的中转线路，避免一个 UUID 在多条出口线路之间乱跳。
 	RelayRouteIDs []string  `json:"relay_route_ids"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -169,19 +175,35 @@ type OperationLog struct {
 }
 
 type AgentHeartbeat struct {
-	CPUCores      int     `json:"cpu_cores,omitempty"`
-	MemTotalBytes int64   `json:"memory_total_bytes,omitempty"`
-	ServerID      string  `json:"server_id"`
-	Hostname      string  `json:"hostname"`
-	AgentVersion  string  `json:"agent_version"`
-	XrayVersion   string  `json:"xray_version"`
-	ConfigHash    string  `json:"config_hash"`
-	LastMessage   string  `json:"last_message"`
-	CPUUsage      float64 `json:"cpu_usage"`
-	MemoryUsage   float64 `json:"memory_usage"`
-	DiskUsage     float64 `json:"disk_usage"`
-	UploadTotal   int64   `json:"upload_total"`
-	DownloadTotal int64   `json:"download_total"`
+	TrafficByClient map[string]ClientTraffic `json:"traffic_by_client,omitempty"`
+	TrafficEpoch    string                   `json:"traffic_epoch,omitempty"`
+	TrafficSampleAt time.Time                `json:"traffic_sample_at,omitempty"`
+	CPUCores        int                      `json:"cpu_cores,omitempty"`
+	MemTotalBytes   int64                    `json:"memory_total_bytes,omitempty"`
+	ServerID        string                   `json:"server_id"`
+	Hostname        string                   `json:"hostname"`
+	AgentVersion    string                   `json:"agent_version"`
+	XrayVersion     string                   `json:"xray_version"`
+	ConfigHash      string                   `json:"config_hash"`
+	LastMessage     string                   `json:"last_message"`
+	CPUUsage        float64                  `json:"cpu_usage"`
+	MemoryUsage     float64                  `json:"memory_usage"`
+	DiskUsage       float64                  `json:"disk_usage"`
+	UploadTotal     int64                    `json:"upload_total"`
+	DownloadTotal   int64                    `json:"download_total"`
+}
+
+type ClientTraffic struct {
+	Uplink   int64 `json:"uplink"`
+	Downlink int64 `json:"downlink"`
+}
+
+// Persisted per-source cumulative watermarks, independent of cycle totals.
+type TrafficCursor struct {
+	Epoch    string    `json:"epoch"`
+	Uplink   int64     `json:"uplink"`
+	Downlink int64     `json:"downlink"`
+	SampleAt time.Time `json:"sample_at"`
 }
 
 type AgentSyncRequest struct {
