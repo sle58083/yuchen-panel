@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 发布前收尾
+
+- 修复 Docker 模式宿主 Nginx 缺少根 API/sub/share 路由导致 404；容器根 API 路由不再被 Vue 回退规则截获。
+- 升级或重装检测到既有运行目录 .env 时，成功输出明确提示 JWT 签名密钥已轮换，所有旧会话失效，需要重新登录。全新安装不显示该提示。
+- Doctor 区分 Docker 容器服务与 systemd 服务；未部署 Agent 的检查显示 SKIP，真正的容器或 API/反代故障仍显示 FAIL。
+
+
 ## Unreleased — C10 client compatibility
 
 - C10 / P2-023: the backend independently serves sing-box JSON for singbox/sing-box/sb/json aliases; both backend and frontend use typed UDP DNS and a default domain resolver. Minimum supported core is sing-box 1.12.0. No legacy export branch is provided.

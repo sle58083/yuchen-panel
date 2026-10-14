@@ -65,14 +65,17 @@ jobs:
           sudo apt-get install -y shellcheck
       - name: ShellCheck
         shell: bash
-        run: shellcheck --severity=error scripts/*.sh deploy/*.sh install.sh
+        run: shellcheck --severity=error scripts/*.sh deploy/*.sh install.sh scripts/yuchen-panel
       - name: Docker installer preflight regression tests
         run: bash scripts/test-docker-install-preflight.sh
+      - name: JWT notice and Doctor mode regression tests
+        run: bash scripts/test-install-notices-doctor.sh
       - name: Bash syntax
         shell: bash
         run: |
           find scripts deploy -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
           bash -n install.sh
+          bash -n scripts/yuchen-panel
 
   frontend:
     name: Frontend build and typecheck

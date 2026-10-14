@@ -35,6 +35,7 @@ ADMIN_USERNAME=""
 ADMIN_PASSWORD=""
 ADMIN_PASSWORD_DISPLAY=""
 JWT_SECRET=""
+JWT_ROTATED=false
 AGENT_SECRET=""
 MANIFEST_URL_TO_WRITE=""
 DEFAULT_UPDATE_MANIFEST_URL="https://raw.githubusercontent.com/sle58083/yuchen-panel/main/version.json"
@@ -398,11 +399,8 @@ EOF_INFO
   chmod 600 "$INFO_FILE"
 }
 
-write_host_nginx_docker() {
-  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
-  step "Writing host Nginx reverse proxy"
-  mkdir -p /etc/nginx/conf.d
-  cat > /etc/nginx/conf.d/yuchen-panel.conf <<EOF_NGINX
+render_host_nginx_docker() {
+  cat <<EOF_NGINX
 server {
     listen ${PANEL_PORT};
     server_name _;
@@ -413,6 +411,32 @@ server {
         return 302 /${WEB_BASE_PATH}/;
     }
 
+    # The host cannot resolve Compose DNS. Keep the URI unchanged and let
+    # the frontend container proxy API/sub/share via its container network.
+    location ^~ /api/ {
+        proxy_pass http://127.0.0.1:${WEB_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location ^~ /sub/ {
+        proxy_pass http://127.0.0.1:${WEB_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location ^~ /s/ {
+        proxy_pass http://127.0.0.1:${WEB_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
     location /${WEB_BASE_PATH}/ {
         proxy_pass http://127.0.0.1:${WEB_PORT}/${WEB_BASE_PATH}/;
         proxy_http_version 1.1;
@@ -423,19 +447,24 @@ server {
     }
 }
 EOF_NGINX
+}
+
+write_host_nginx_docker() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
+  step "Writing host Nginx reverse proxy"
+  mkdir -p /etc/nginx/conf.d
+  render_host_nginx_docker > /etc/nginx/conf.d/yuchen-panel.conf
   nginx -t
   systemctl enable nginx >/dev/null 2>&1 || true
   systemctl restart nginx
 }
 
-write_host_nginx_fast() {
-  step "Writing host Nginx static panel"
+render_host_nginx_fast() {
   local web_root="$APP_DIR/frontend/dist"
   if [[ ! -f "$web_root/index.html" && -f "$APP_DIR/web/index.html" ]]; then
     web_root="$APP_DIR/web"
   fi
-  mkdir -p /etc/nginx/conf.d
-  cat > /etc/nginx/conf.d/yuchen-panel.conf <<EOF_NGINX
+  cat <<EOF_NGINX
 server {
     listen ${PANEL_PORT};
     server_name _;
@@ -530,6 +559,12 @@ server {
     }
 }
 EOF_NGINX
+}
+
+write_host_nginx_fast() {
+  step "Writing host Nginx static panel"
+  mkdir -p /etc/nginx/conf.d
+  render_host_nginx_fast > /etc/nginx/conf.d/yuchen-panel.conf
   nginx -t
   systemctl enable nginx >/dev/null 2>&1 || true
   systemctl restart nginx
@@ -559,9 +594,22 @@ post_install_self_check() {
   fi
 }
 
+record_jwt_rotation() {
+  JWT_ROTATED=false
+  if [[ -f "$APP_DIR/.env" ]]; then JWT_ROTATED=true; fi
+}
+
+print_jwt_rotation_notice() {
+  if [[ "$JWT_ROTATED" == "true" ]]; then
+    echo "⚠️ 安全提示：本次安装已轮换 JWT 签名密钥。"
+    echo "   所有已登录用户需要重新登录，管理后台的旧会话将失效。"
+  fi
+}
+
 print_result() {
   echo
   echo "Yuchen Panel installed successfully"
+  print_jwt_rotation_notice
   echo
   echo "Username:    ${ADMIN_USERNAME}"
   echo "Password:    ${ADMIN_PASSWORD_DISPLAY}"
@@ -754,6 +802,7 @@ main() {
     exit 1
   fi
 
+  record_jwt_rotation # Detect the existing runtime .env before rsync/reinstall.
   SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   INSTALL_MODE="$(selected_install_mode)"
   echo "Install mode: ${INSTALL_MODE}"

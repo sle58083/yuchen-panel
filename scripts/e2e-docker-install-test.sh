@@ -74,4 +74,6 @@ echo "PASS 7: Compose API running"
 secret_in_container=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" | sed -n 's/^YC_JWT_SECRET=//p')
 [[ "$secret_in_env" == "$secret_in_container" ]] || fail "8 placeholder leaked into container"
 echo "PASS 8: container secret equals runtime .env byte-for-byte"
+! grep -Fq '本次安装已轮换 JWT 签名密钥' "$log" || fail "fresh install incorrectly reported key rotation"
+bash "$repo/scripts/test-nginx-proxy.sh"
 echo "E2E_PASS: eight assertions; source-built Docker image=$(docker inspect --format '{{.Image}}' "$container"); complete redacted log=$log"
