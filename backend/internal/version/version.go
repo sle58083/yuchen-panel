@@ -3,5 +3,5 @@ package version
 
 // Version is the single API version reported to health checks and persisted
 // for new panel data. Release tooling may replace it at build time later.
-const Version = "1.0.3-rc.2"
+const Version = "1.0.3-rc.3"
 const Channel = "rc"

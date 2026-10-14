@@ -24,12 +24,13 @@ def release_manifest(version, sha, repository):
         "min_supported_version": "0.7.5",
         "released_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         "changelog": [
-            "审计修复 RC：认证、升级与安装路径安全修复",
-            "sing-box/v2rayN/Clash/Shadowrocket 客户端兼容",
-            "三档节点预设，默认抗封锁档（用户墙内客户策略）",
-            "Docker Nginx 路由及 Doctor 模式检查修复",
+            "包月限流量：按客户 ID 汇总 Xray 上传与下载，Stats API 仅监听本机",
+            "epoch 与服务器游标持久化，处理重启与重复上报",
+            "到期或超限停用；延长到期即续费，清零并恢复启用",
+            "客户列表按字节显示本周期用量，30 秒刷新且编辑时暂停",
+            "正常在线限额执行通常有约 30–60 秒延迟，异常时可能更久",
             "升级会轮换 JWT 密钥，旧会话失效，需要重新登录",
-            "服务器规格提示依赖新版 Agent",
+            "需要匹配的新版 API 与 Agent，VPS 真机流量验收仍待用户执行",
         ],
     }
 
