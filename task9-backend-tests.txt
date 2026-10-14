@@ -1,0 +1,39 @@
+?   	yuchen-panel/backend/cmd/server	[no test files]
+=== RUN   TestNodePresetDefaultsAndStoredSecurity
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/C24_1_NewVLESS_UserConfirmedRealityDefault
+    nodes_test.go:50: protocol=vless security=reality generated=reality
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/C24_2_NewTrojan_TLS
+    nodes_test.go:50: protocol=trojan security=tls generated=tls
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/C24_3_NewVMess_None
+    nodes_test.go:50: protocol=vmess security=none generated=none
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/C24_4_StoredRealityPreserved
+    nodes_test.go:50: protocol=vless security=reality generated=reality
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/C24_5_StoredNonePreserved
+    nodes_test.go:50: protocol=vless security=none generated=none
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/ExplicitNewVLESSNoneRemainsSelectable
+    nodes_test.go:50: protocol=vless security=none generated=none
+=== RUN   TestNodePresetDefaultsAndStoredSecurity/ExplicitVMessRealityCompatibility
+    nodes_test.go:50: protocol=vmess security=none generated=none
+--- PASS: TestNodePresetDefaultsAndStoredSecurity (0.30s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/C24_1_NewVLESS_UserConfirmedRealityDefault (0.00s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/C24_2_NewTrojan_TLS (0.00s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/C24_3_NewVMess_None (0.00s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/C24_4_StoredRealityPreserved (0.00s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/C24_5_StoredNonePreserved (0.00s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/ExplicitNewVLESSNoneRemainsSelectable (0.00s)
+    --- PASS: TestNodePresetDefaultsAndStoredSecurity/ExplicitVMessRealityCompatibility (0.00s)
+=== RUN   TestAgentSpecsRoundtripAndOlderHeartbeat
+--- PASS: TestAgentSpecsRoundtripAndOlderHeartbeat (0.35s)
+PASS
+ok  	yuchen-panel/backend/internal/api	0.668s
+?   	yuchen-panel/backend/internal/model	[no test files]
+?   	yuchen-panel/backend/internal/security	[no test files]
+testing: warning: no tests to run
+PASS
+ok  	yuchen-panel/backend/internal/store	0.011s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	yuchen-panel/backend/internal/version	0.011s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	yuchen-panel/backend/internal/xray	0.011s [no tests to run]

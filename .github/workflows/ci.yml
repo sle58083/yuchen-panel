@@ -87,6 +87,8 @@ jobs:
       - working-directory: frontend
         run: npm ci --no-audit --no-fund --progress=false
       - working-directory: frontend
+        run: node --test tests/*.test.mjs
+      - working-directory: frontend
         run: npm run build
 
   e2e-docker-install:

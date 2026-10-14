@@ -207,6 +207,7 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		case "trojan":
 			n.Security = "tls"
 		case "vless":
+			// Task 9: user confirmed mainly mainland clients; anti-blocking default.
 			n.Security = "reality"
 		default:
 			n.Security = "none"

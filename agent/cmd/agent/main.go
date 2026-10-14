@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -24,6 +25,8 @@ import (
 var version = "dev"
 
 type Heartbeat struct {
+	CPUCores      int     `json:"cpu_cores,omitempty"`
+	MemTotalBytes int64   `json:"memory_total_bytes,omitempty"`
 	ServerID      string  `json:"server_id"`
 	Hostname      string  `json:"hostname"`
 	AgentVersion  string  `json:"agent_version"`
@@ -238,9 +241,11 @@ func applyXrayConfig(cfg Config, syncResp SyncResponse) error {
 
 func collectHeartbeat(cfg Config, hostname, hash, msg string) Heartbeat {
 	up, down := networkTotals()
+	memoryUsed, memoryTotal := memoryMetrics()
 	return Heartbeat{
 		ServerID: cfg.ServerID, Hostname: hostname, AgentVersion: version, XrayVersion: xrayVersion(), ConfigHash: hash, LastMessage: msg,
-		CPUUsage: loadAverage(), MemoryUsage: memoryUsage(), DiskUsage: diskUsage("/"), UploadTotal: up, DownloadTotal: down,
+		CPUCores: runtime.NumCPU(), MemTotalBytes: memoryTotal,
+		CPUUsage: loadAverage(), MemoryUsage: memoryUsed, DiskUsage: diskUsage("/"), UploadTotal: up, DownloadTotal: down,
 	}
 }
 
@@ -280,25 +285,34 @@ func loadAverage() float64 {
 	return v
 }
 
-func memoryUsage() float64 {
+// Reuse one /proc/meminfo read for utilization and total capacity.
+func memoryMetrics() (float64, int64) {
 	raw, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 0
+		return 0, 0
 	}
-	vals := map[string]float64{}
-	for _, line := range strings.Split(string(raw), "\n") {
+	return parseMemoryMetrics(string(raw))
+}
+
+func parseMemoryMetrics(raw string) (float64, int64) {
+	vals := map[string]int64{}
+	for _, line := range strings.Split(raw, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			key := strings.TrimSuffix(fields[0], ":")
-			vals[key], _ = strconv.ParseFloat(fields[1], 64)
+		if len(fields) >= 3 && fields[2] == "kB" {
+			value, err := strconv.ParseInt(fields[1], 10, 64)
+			if err == nil && value >= 0 {
+				vals[strings.TrimSuffix(fields[0], ":")] = value
+			}
 		}
 	}
-	total := vals["MemTotal"]
-	avail := vals["MemAvailable"]
-	if total <= 0 {
-		return 0
+	total, avail := vals["MemTotal"], vals["MemAvailable"]
+	if total <= 0 || total > (1<<63-1)/1024 {
+		return 0, 0
 	}
-	return round2((total - avail) * 100 / total)
+	if avail > total {
+		avail = total
+	}
+	return round2(float64(total-avail) * 100 / float64(total)), total * 1024
 }
 
 func diskUsage(path string) float64 {

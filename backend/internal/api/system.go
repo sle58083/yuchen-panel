@@ -32,11 +32,12 @@ func (r *Router) systemChecks(w http.ResponseWriter, req *http.Request) {
 	}
 	checks, counts := r.buildSystemChecks()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":     panelVersion,
-		"install_dir": installDir,
-		"checked_at":  time.Now().Format(time.RFC3339),
-		"counts":      counts,
-		"checks":      checks,
+		"version":      panelVersion,
+		"install_dir":  installDir,
+		"checked_at":   time.Now().Format(time.RFC3339),
+		"counts":       counts,
+		"checks":       checks,
+		"server_specs": r.serverSpecs(),
 	})
 }
 
@@ -589,4 +590,26 @@ func isLoopbackForReport(v string) bool {
 	default:
 		return false
 	}
+}
+
+// serverSpecs reuses Agent heartbeat capacities; panel/container resources are
+// never substituted for the selected node server's resources.
+func (r *Router) serverSpecs() map[string]map[string]any {
+	r.store.Mu.RLock()
+	defer r.store.Mu.RUnlock()
+	specs := make(map[string]map[string]any)
+	for id, s := range r.store.Data.Servers {
+		if s.CPUCores <= 0 && s.MemTotalBytes <= 0 {
+			continue
+		}
+		fields := make(map[string]any)
+		if s.CPUCores > 0 {
+			fields["cpu_cores"] = s.CPUCores
+		}
+		if s.MemTotalBytes > 0 {
+			fields["memory_total_bytes"] = s.MemTotalBytes
+		}
+		specs[id] = fields
+	}
+	return specs
 }

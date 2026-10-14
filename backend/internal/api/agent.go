@@ -31,6 +31,13 @@ func (r *Router) agentHeartbeat(w http.ResponseWriter, req *http.Request) {
 	s.XrayVersion = body.XrayVersion
 	s.ConfigHash = body.ConfigHash
 	s.LastSyncMessage = body.LastMessage
+	// Older Agents omit capacity fields; do not erase previously known specs.
+	if body.CPUCores > 0 {
+		s.CPUCores = body.CPUCores
+	}
+	if body.MemTotalBytes > 0 {
+		s.MemTotalBytes = body.MemTotalBytes
+	}
 	s.CPUUsage = body.CPUUsage
 	s.MemoryUsage = body.MemoryUsage
 	s.DiskUsage = body.DiskUsage
