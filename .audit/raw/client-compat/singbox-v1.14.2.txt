@@ -1,0 +1,15 @@
+COMMAND: docker pull ghcr.io/sagernet/sing-box:v1.14.2
+v1.14.2: Pulling from sagernet/sing-box
+Digest: sha256:afbffd294c5eb3519cc7b4587299ef189bb0a2ca2f667cb6301fdb6b9bce9558
+Status: Image is up to date for ghcr.io/sagernet/sing-box:v1.14.2
+ghcr.io/sagernet/sing-box:v1.14.2
+COMMAND: inspect image digest
+ghcr.io/sagernet/sing-box@sha256:afbffd294c5eb3519cc7b4587299ef189bb0a2ca2f667cb6301fdb6b9bce9558
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.14.2 check -c /c.json (file=singbox.json)
+EXIT_CODE: 0
+COMMAND: docker run --rm --network none --read-only --cap-drop ALL -v <sample>:/c.json:ro ghcr.io/sagernet/sing-box:v1.14.2 check -c /c.json (file=singbox-tun.json)
+EXIT_CODE: 0
+COMMAND: frontend-generated sample check; image=ghcr.io/sagernet/sing-box:v1.14.2 file=frontend-singbox.json
+EXIT_CODE: 0
+COMMAND: frontend-generated sample check; image=ghcr.io/sagernet/sing-box:v1.14.2 file=frontend-singbox-tun.json
+EXIT_CODE: 0

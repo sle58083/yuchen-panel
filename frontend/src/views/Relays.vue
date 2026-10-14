@@ -259,7 +259,7 @@ function buildRelayVlessLink() {
   q.set('encryption', 'none')
   q.set('type', 'tcp')
   q.set('security', 'reality')
-  // V0.7.7.1: default relay QR/link should stay universal; do not force xudp.
+  // V1.0.2: default relay QR/link should stay universal; do not force xudp.
   if (routeMode(r) === 'socks5_route') {
     q.set('sni', valueOr(r.relay_sni, 'www.intel.com'))
     q.set('fp', valueOr(r.relay_fingerprint, 'chrome'))
@@ -279,6 +279,7 @@ function buildRelayVlessLink() {
     }
   }
   const suffix = routeMode(r) === 'socks5_route' ? 'SOCKS5路由中转' : 'TCP透传中转'
+  // This is a URI fragment label, not userinfo; strict userinfo encoding lives in share.ts.
   const label = encodeURIComponent(`${r.name}-${suffix}`)
   return `vless://${c.uuid}@${r.relay_host}:${Number(r.relay_port)}?${q.toString()}#${label}`
 }
@@ -321,7 +322,7 @@ onMounted(() => { loadSavedOutlets(); load() })
   <div class="page-head">
     <div>
       <h1 class="page-title">中转管理</h1>
-      <p class="page-desc">V0.7.7.1 中转管理清理版：这里只作为线路运维视图，客户节点统一到客户管理里分享。</p>
+      <p class="page-desc">这里只作为线路运维视图，客户节点统一到客户管理里分享。</p>
     </div>
     <div class="head-actions"><button class="btn" @click="showRelayEditor = true">新增中转线路</button></div>
   </div>

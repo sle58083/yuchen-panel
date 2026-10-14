@@ -1,0 +1,15 @@
+.git
+.github
+**/node_modules
+**/data
+**/backups
+**/*.zip
+**/*.log
+**/*.tmp
+**/*.tsbuildinfo
+work
+dist-release
+frontend/dist
+backend/tmp
+agent/tmp
+.audit/raw

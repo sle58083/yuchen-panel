@@ -196,6 +196,7 @@ func (r *Router) validateClientLocked(c *model.Client) error {
 type createClientRelayRequest struct {
 	Username       string `json:"username"`
 	Email          string `json:"email"`
+	Password       string `json:"password"`
 	TrafficLimitGB int64  `json:"traffic_limit_gb"`
 	ExpireAt       string `json:"expire_at"`
 	RelayServerID  string `json:"relay_server_id"`
@@ -279,8 +280,12 @@ func (r *Router) createClientWithSocks5Relay(w http.ResponseWriter, req *http.Re
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Reality 密钥生成失败：" + err.Error()})
 		return
 	}
+	password := strings.TrimSpace(body.Password)
+	if password == "" {
+		password = store.NewPassword()
+	}
 	client := model.Client{
-		ID: store.NewID("cli"), Username: body.Username, Email: body.Email, UUID: store.NewUUID(), Password: store.NewPassword(), SubscribeToken: store.NewToken(), TrafficLimitGB: body.TrafficLimitGB, Enabled: true, CreatedAt: now, UpdatedAt: now,
+		ID: store.NewID("cli"), Username: body.Username, Email: body.Email, UUID: store.NewUUID(), Password: password, SubscribeToken: store.NewToken(), TrafficLimitGB: body.TrafficLimitGB, Enabled: true, CreatedAt: now, UpdatedAt: now,
 	}
 	if body.ExpireAt != "" {
 		if t, err := time.Parse(time.RFC3339, body.ExpireAt); err == nil {

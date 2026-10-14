@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${1:-1.0.2}"
+VERSION="${1:-$(sed 's/-stable$//' "$(dirname "${BASH_SOURCE[0]}")/../VERSION")}"
 CODENAME="${2:-stable}"
+if [[ "$VERSION" == *-rc.* && $# -lt 2 ]]; then CODENAME=rc; fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/dist-release"
-PKG_NAME="yuchen-panel-v${VERSION}-${CODENAME}.zip"
+PKG_NAME="yuchen-panel-v${VERSION}.zip"
 PKG_PATH="$OUT_DIR/$PKG_NAME"
 
 export CGO_ENABLED=0
@@ -24,7 +25,7 @@ echo "[1/5] Building backend API binary"
 chmod +x "$ROOT_DIR/bin/yuchen-panel-api-linux-amd64"
 
 echo "[2/5] Building agent binary"
-(cd "$ROOT_DIR/agent" && go test ./... && go build -trimpath -ldflags='-s -w' -o "$ROOT_DIR/bin/yuchen-agent-linux-amd64" ./cmd/agent)
+(cd "$ROOT_DIR/agent" && go test ./... && AGENT_VERSION="$(sed 's/-stable$//' "$ROOT_DIR/VERSION")" && go build -trimpath -ldflags="-s -w -X main.version=$AGENT_VERSION" -o "$ROOT_DIR/bin/yuchen-agent-linux-amd64" ./cmd/agent)
 chmod +x "$ROOT_DIR/bin/yuchen-agent-linux-amd64"
 
 echo "[3/5] Building frontend dist"
@@ -33,7 +34,7 @@ echo "[3/5] Building frontend dist"
 echo "[4/5] Packaging fast release"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-PKG_ROOT="$TMP_DIR/yuchen-panel-v${VERSION}-${CODENAME}"
+PKG_ROOT="$TMP_DIR/${PKG_NAME%.zip}"
 mkdir -p "$PKG_ROOT"
 rsync -a \
   --exclude '.git' \
@@ -58,7 +59,7 @@ cat > "$PKG_ROOT/PACKAGE-MANIFEST.json" <<JSON_PACKAGE
 {
   "version": "${VERSION}",
   "codename": "${CODENAME}",
-  "latest": "${VERSION}-${CODENAME}-agent-xray",
+  "latest": "${VERSION}",
   "package": "${PKG_NAME}",
   "note": "Release SHA256 is published in main/version.json and SHA256SUMS. This package manifest intentionally does not include a self-referential archive hash."
 }
@@ -80,7 +81,7 @@ PYZIP
 SHA256="$(sha256sum "$PKG_PATH" | awk '{print $1}')"
 cat > "$OUT_DIR/version.fast.json" <<JSON
 {
-  "latest": "${VERSION}-${CODENAME}-agent-xray",
+  "latest": "${VERSION}",
   "version": "${VERSION}",
   "codename": "${CODENAME}",
   "package": "${PKG_NAME}",

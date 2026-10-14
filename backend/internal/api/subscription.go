@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,99 +20,66 @@ import (
 // SOCKS5 与 dokodemo-door 属于内部链路入站，不生成客户订阅。
 func isShareableNodeProtocol(p string) bool {
 	switch strings.ToLower(strings.TrimSpace(p)) {
-	case "vless", "vmess", "trojan", "shadowsocks":
+	case "vless", "vmess", "trojan":
 		return true
 	}
 	return false
 }
 
 func (r *Router) subscription(w http.ResponseWriter, req *http.Request) {
-	path := strings.Trim(strings.TrimPrefix(req.URL.Path, "/sub/"), "/")
-	parts := strings.Split(path, "/")
-	token := ""
-	if len(parts) > 0 {
-		token = strings.TrimSpace(parts[0])
-	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(req.URL.Path, "/sub/"), "/"), "/")
+	token := strings.TrimSpace(parts[0])
 	if token == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	format := strings.ToLower(strings.TrimSpace(req.URL.Query().Get("format")))
-	if format == "" {
-		format = strings.ToLower(strings.TrimSpace(req.URL.Query().Get("target")))
-	}
-	if format == "" && len(parts) > 1 {
-		format = strings.ToLower(strings.TrimSpace(parts[1]))
-	}
-	isClash := format == "clash" || format == "clash-meta" || format == "mihomo" || format == "yaml" || format == "yml"
-
-	r.store.Mu.RLock()
-	defer r.store.Mu.RUnlock()
-	var client model.Client
-	found := false
-	for _, c := range r.store.Data.Clients {
-		if c.SubscribeToken == token {
-			client = c
-			found = true
-			break
-		}
-	}
-	if !found {
-		http.Error(w, "subscription not found", http.StatusNotFound)
+	client, nodes, relays, policy, status := r.subscriptionSnapshot(token)
+	if status != http.StatusOK {
+		http.Error(w, "subscription unavailable", status)
 		return
 	}
-	if !client.Enabled || (!client.ExpireAt.IsZero() && client.ExpireAt.Before(time.Now())) {
-		http.Error(w, "subscription expired or disabled", http.StatusForbidden)
-		return
-	}
-	allowed := map[string]bool{}
-	for _, id := range client.NodeIDs {
-		allowed[id] = true
-	}
-	fixedExitOnly := len(client.RelayRouteIDs) > 0 && len(client.NodeIDs) == 0
-	nodes := []model.Node{}
-	for _, n := range r.store.Data.Nodes {
-		if !n.Enabled {
-			continue
-		}
-		if fixedExitOnly {
-			continue
-		}
-		if len(allowed) > 0 && !allowed[n.ID] {
-			continue
-		}
-		if !isShareableNodeProtocol(n.Protocol) {
-			continue
-		}
-		nodes = append(nodes, n)
-	}
-	relays := []model.RelayRoute{}
-	for _, rid := range client.RelayRouteIDs {
-		if rr, ok := r.store.Data.RelayRoutes[rid]; ok && rr.Enabled && rr.RouteMode == "socks5_route" {
-			relays = append(relays, rr)
-		}
-	}
-	if isClash {
-		yaml := buildClashMetaSubscription(nodes, relays, client, r.store.Data.NetworkPolicy)
-		w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		if req.URL.Query().Get("download") == "1" || (len(parts) > 2 && strings.ToLower(parts[2]) == "download") {
-			w.Header().Set("Content-Disposition", "attachment; filename=\"yuchen-clash.yaml\"")
-		}
-		_, _ = w.Write([]byte(yaml))
-		return
-	}
-	lines := []string{}
-	for _, n := range nodes {
-		lines = append(lines, buildNodeShareLink(n, client))
-	}
-	for _, rr := range relays {
-		lines = append(lines, buildRelayShareLink(rr, client))
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	format, source := subscriptionFormat(req, parts)
+	// Deliberately do not log bearer tokens, subscription URLs or the raw UA.
+	r.store.Mu.Lock()
+	r.store.AddLog(client.Username, "subscription.format", clientIP(req), "format="+format+" source="+source)
+	r.store.Mu.Unlock()
+	nodes, relays = uniqueSubscriptionNames(nodes, relays)
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(strings.Join(lines, "\n")))
+	switch format {
+	case "singbox":
+		config := buildSingBoxSubscription(nodes, relays, client, policy)
+		profile := req.URL.Query().Get("profile")
+		ua := strings.ToLower(req.UserAgent())
+		if profile == "tun" || (profile == "" && (strings.HasPrefix(ua, "sfa/") || strings.HasPrefix(ua, "sfi/"))) {
+			addSingBoxTunProfile(config)
+		}
+		writeJSON(w, http.StatusOK, config)
+		return
+	case "clash":
+		w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
+		if req.URL.Query().Get("download") == "1" {
+			w.Header().Set("Content-Disposition", `attachment; filename="yuchen-clash.yaml"`)
+		}
+		_, _ = w.Write([]byte(buildClashMetaSubscription(nodes, relays, client, policy)))
+		return
+	case "v2rayn", "raw":
+		lines := []string{}
+		for _, node := range nodes {
+			lines = append(lines, buildNodeShareLink(node, client))
+		}
+		for _, relay := range relays {
+			lines = append(lines, buildRelayShareLink(relay, client))
+		}
+		body := strings.Join(lines, "\n")
+		if format == "v2rayn" {
+			body = base64.StdEncoding.EncodeToString([]byte(body))
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(body))
+		return
+	}
 }
+
 func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 	// V0.7.5.9.1: /s/<token>/<nodeID> 保留为兼容短链接接口。
 	// 默认二维码不再使用 HTTP 短链接，而是直接编码 vless:// 单节点链接。
@@ -143,22 +112,7 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	allowed := map[string]bool{}
-	for _, id := range client.NodeIDs {
-		allowed[id] = true
-	}
-	fixedExitOnly := len(client.RelayRouteIDs) > 0 && len(client.NodeIDs) == 0
-	if fixedExitOnly {
-		if _, ok := r.store.Data.RelayRoutes[nodeID]; !ok {
-			http.Error(w, "fixed-exit client cannot use normal node", http.StatusForbidden)
-			return
-		}
-	}
-	if len(allowed) > 0 && !allowed[nodeID] {
-		http.Error(w, "node not allowed", http.StatusForbidden)
-		return
-	}
-
+	allowed := model.AllowedNodes(client)
 	var node model.Node
 	foundNode := false
 	for _, n := range r.store.Data.Nodes {
@@ -169,6 +123,10 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if foundNode && node.Enabled && isShareableNodeProtocol(node.Protocol) {
+		if !allowed[node.ID] {
+			http.Error(w, "node not allowed", http.StatusForbidden)
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write([]byte(buildNodeShareLink(node, client)))
@@ -182,7 +140,7 @@ func (r *Router) shortShare(w http.ResponseWriter, req *http.Request) {
 				break
 			}
 		}
-		if !allowedRelay && len(client.RelayRouteIDs) > 0 {
+		if !allowedRelay {
 			http.Error(w, "relay not allowed", http.StatusForbidden)
 			return
 		}
@@ -207,10 +165,27 @@ func nodeHost(n model.Node) string {
 }
 
 func nodeShareName(n model.Node) string {
-	if strings.TrimSpace(n.Name) != "" {
-		return strings.TrimSpace(n.Name)
+	shortID := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, n.ID)
+	if len(shortID) > 4 {
+		shortID = shortID[len(shortID)-4:]
 	}
-	return fmt.Sprintf("%s:%d", nodeHost(n), n.Port)
+	if shortID == "" {
+		shortID = "node"
+	}
+	if strings.TrimSpace(n.Name) != "" {
+		name := strings.TrimSpace(n.Name)
+		suffix := " #" + strings.ToLower(shortID)
+		if strings.HasSuffix(name, suffix) {
+			return name
+		}
+		return name + suffix
+	}
+	return fmt.Sprintf("%s:%d #%s", nodeHost(n), n.Port, strings.ToLower(shortID))
 }
 
 func relayShareName(r model.RelayRoute) string {
@@ -248,13 +223,13 @@ func buildClashProxyLines(name, host string, port int, uuid, security, transport
 			lines = append(lines, fmt.Sprintf("      short-id: %s", yamlQuote(shortID)))
 		}
 	}
-	if transport == "ws" && strings.TrimSpace(path) != "" {
+	if transport == "ws" {
 		lines = append(lines, "    ws-opts:")
-		lines = append(lines, fmt.Sprintf("      path: %s", yamlQuote(path)))
+		lines = append(lines, fmt.Sprintf("      path: %s", yamlQuote(valueOr(path, "/yuchen"))))
 	}
-	if transport == "grpc" && strings.TrimSpace(path) != "" {
+	if transport == "grpc" {
 		lines = append(lines, "    grpc-opts:")
-		lines = append(lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(strings.Trim(path, "/"))))
+		lines = append(lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(grpcService(path))))
 	}
 	return lines
 }
@@ -316,15 +291,16 @@ func buildClashMetaSubscription(nodes []model.Node, relays []model.RelayRoute, c
 }
 
 // buildNodeShareLink 按入站协议生成对应的分享链接：
-// vless://、vmess://（base64 JSON）、trojan://、ss://（SIP002）。
+// vless://、vmess://（base64 JSON）、trojan://。
 func buildNodeShareLink(n model.Node, client model.Client) string {
+	if !isShareableNodeProtocol(n.Protocol) {
+		return ""
+	}
 	switch strings.ToLower(strings.TrimSpace(n.Protocol)) {
 	case "vmess":
 		return buildVmessShareLink(n, client)
 	case "trojan":
 		return buildTrojanShareLink(n, client)
-	case "shadowsocks":
-		return buildSSShareLink(n)
 	default:
 		return buildVlessShareLink(n, client)
 	}
@@ -352,14 +328,13 @@ func buildVlessShareLink(n model.Node, client model.Client) string {
 		q.Set("spx", valueOr(n.RealitySpiderX, "/"))
 	}
 	q.Set("type", valueOr(n.Transport, "tcp"))
-	if strings.ToLower(n.Transport) == "ws" && n.Path != "" {
-		q.Set("path", n.Path)
+	if strings.ToLower(n.Transport) == "ws" {
+		q.Set("path", valueOr(n.Path, "/yuchen"))
 	}
-	if strings.ToLower(n.Transport) == "grpc" && n.Path != "" {
-		q.Set("serviceName", strings.Trim(n.Path, "/"))
+	if strings.ToLower(n.Transport) == "grpc" {
+		q.Set("serviceName", grpcService(n.Path))
 	}
-	name := url.QueryEscape(n.Name)
-	return fmt.Sprintf("vless://%s@%s:%d?%s#%s", client.UUID, host, n.Port, q.Encode(), name)
+	return buildUserInfoLink("vless", client.UUID, net.JoinHostPort(strings.Trim(host, "[]"), strconv.Itoa(n.Port)), q.Encode(), nodeShareName(n))
 }
 
 func buildRelayShareLink(r model.RelayRoute, client model.Client) string {
@@ -378,8 +353,7 @@ func buildRelayShareLink(r model.RelayRoute, client model.Client) string {
 	}
 	q.Set("spx", valueOr(r.RelayRealitySpiderX, "/"))
 	q.Set("type", "tcp")
-	name := url.QueryEscape(r.Name)
-	return fmt.Sprintf("vless://%s@%s:%d?%s#%s", client.UUID, valueOr(r.RelayHost, "127.0.0.1"), r.RelayPort, q.Encode(), name)
+	return buildUserInfoLink("vless", client.UUID, net.JoinHostPort(strings.Trim(valueOr(r.RelayHost, "127.0.0.1"), "[]"), strconv.Itoa(r.RelayPort)), q.Encode(), r.Name)
 }
 
 func valueOr(v, fallback string) string {
@@ -408,10 +382,10 @@ func buildVmessShareLink(n model.Node, client model.Client) string {
 		"tls":  "",
 	}
 	if transport == "ws" {
-		obj["path"] = n.Path
+		obj["path"] = valueOr(n.Path, "/yuchen")
 	}
 	if transport == "grpc" {
-		obj["path"] = strings.Trim(n.Path, "/")
+		obj["path"] = grpcService(n.Path)
 	}
 	if security == "tls" || security == "reality" {
 		obj["tls"] = "tls"
@@ -449,26 +423,38 @@ func buildTrojanShareLink(n model.Node, client model.Client) string {
 	}
 	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
 	q.Set("type", transport)
-	if transport == "ws" && n.Path != "" {
-		q.Set("path", n.Path)
+	if transport == "ws" {
+		q.Set("path", valueOr(n.Path, "/yuchen"))
 	}
-	if transport == "grpc" && n.Path != "" {
-		q.Set("serviceName", strings.Trim(n.Path, "/"))
+	if transport == "grpc" {
+		q.Set("serviceName", grpcService(n.Path))
 	}
-	name := url.QueryEscape(nodeShareName(n))
-	return fmt.Sprintf("trojan://%s@%s:%d?%s#%s", xray.TrojanClientPassword(client), nodeHost(n), n.Port, q.Encode(), name)
+	return buildUserInfoLink("trojan", xray.TrojanClientPassword(client), net.JoinHostPort(strings.Trim(nodeHost(n), "[]"), strconv.Itoa(n.Port)), q.Encode(), nodeShareName(n))
 }
 
-// buildSSShareLink 生成 SIP002 ss:// 分享链接（base64url(method:password)@host:port）。
-func buildSSShareLink(n model.Node) string {
-	method, password := xray.SSCredentials(n)
-	userInfo := base64.RawURLEncoding.EncodeToString([]byte(method + ":" + password))
-	name := url.QueryEscape(nodeShareName(n))
-	return fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, nodeHost(n), n.Port, name)
+// buildUserInfoLink applies the same RFC3986 encoder as the browser userinfo
+// helper. Only unreserved bytes remain literal; this prevents &, =, +, comma,
+// quotes and other delimiters from changing URI parsing semantics.
+func buildUserInfoLink(scheme, user, host, rawQuery, fragment string) string {
+	encoded := make([]byte, 0, len(user))
+	const hex = "0123456789ABCDEF"
+	for _, b := range []byte(user) {
+		if b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.ContainsRune("-_.~", rune(b)) {
+			encoded = append(encoded, b)
+		} else {
+			encoded = append(encoded, '%', hex[b>>4], hex[b&15])
+		}
+	}
+	u := &url.URL{Scheme: scheme, Host: host, RawQuery: rawQuery, Fragment: fragment}
+	base := u.String()
+	return strings.Replace(base, scheme+"://", scheme+"://"+string(encoded)+"@", 1)
 }
 
 // buildClashProxyLinesForNode 按协议生成 Clash Meta / Mihomo proxies 段。
 func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
+	if !isShareableNodeProtocol(n.Protocol) {
+		return nil
+	}
 	name := nodeShareName(n)
 	host := nodeHost(n)
 	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
@@ -483,6 +469,7 @@ func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
 			fmt.Sprintf("    uuid: %s", yamlQuote(client.UUID)),
 			"    alterId: 0",
 			"    cipher: auto",
+			fmt.Sprintf("    network: %s", yamlQuote(transport)),
 			"    udp: true",
 		}
 		appendClashTransportAndTLS(&lines, security, transport, n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.Path)
@@ -505,17 +492,6 @@ func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
 		}
 		appendClashTransportAndTLS(&lines, trojanSecurity, transport, n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.Path)
 		return lines
-	case "shadowsocks":
-		method, password := xray.SSCredentials(n)
-		return []string{
-			fmt.Sprintf("  - name: %s", yamlQuote(name)),
-			"    type: ss",
-			fmt.Sprintf("    server: %s", yamlQuote(host)),
-			fmt.Sprintf("    port: %d", n.Port),
-			fmt.Sprintf("    cipher: %s", yamlQuote(method)),
-			fmt.Sprintf("    password: %s", yamlQuote(password)),
-			"    udp: true",
-		}
 	default:
 		return buildClashProxyLines(name, host, n.Port, client.UUID, n.Security, valueOr(n.Transport, "tcp"), n.SNI, n.Fingerprint, n.RealityPublicKey, n.RealityShortID, n.RealitySpiderX, n.Path)
 	}
@@ -541,12 +517,12 @@ func appendClashTransportAndTLS(lines *[]string, security, transport, sni, finge
 			*lines = append(*lines, fmt.Sprintf("      short-id: %s", yamlQuote(shortID)))
 		}
 	}
-	if transport == "ws" && strings.TrimSpace(path) != "" {
+	if transport == "ws" {
 		*lines = append(*lines, "    ws-opts:")
-		*lines = append(*lines, fmt.Sprintf("      path: %s", yamlQuote(path)))
+		*lines = append(*lines, fmt.Sprintf("      path: %s", yamlQuote(valueOr(path, "/yuchen"))))
 	}
-	if transport == "grpc" && strings.TrimSpace(path) != "" {
+	if transport == "grpc" {
 		*lines = append(*lines, "    grpc-opts:")
-		*lines = append(*lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(strings.Trim(path, "/"))))
+		*lines = append(*lines, fmt.Sprintf("      grpc-service-name: %s", yamlQuote(grpcService(path))))
 	}
 }

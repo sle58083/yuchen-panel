@@ -9,19 +9,24 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
-const version = "0.7.7.1-clash-import-polish-agent-xray"
+var version = "dev"
 
 type Heartbeat struct {
+	CPUCores      int     `json:"cpu_cores,omitempty"`
+	MemTotalBytes int64   `json:"memory_total_bytes,omitempty"`
 	ServerID      string  `json:"server_id"`
 	Hostname      string  `json:"hostname"`
 	AgentVersion  string  `json:"agent_version"`
@@ -63,6 +68,9 @@ type Config struct {
 }
 
 func main() {
+	if strings.TrimSpace(version) == "" {
+		version = "dev"
+	}
 	cfg := Config{
 		PanelBase:     strings.TrimRight(getenv("YC_PANEL_BASE", "http://127.0.0.1:8088"), "/"),
 		ServerID:      getenv("YC_SERVER_ID", ""),
@@ -77,10 +85,18 @@ func main() {
 		log.Fatal("YC_SERVER_ID and YC_AGENT_TOKEN are required")
 	}
 	hostname, _ := os.Hostname()
+	if _, err := validatePanelURL(cfg.PanelBase); err != nil {
+		log.Fatal(err)
+	}
 	lastMessage := "agent started"
+	_, pendingErr := os.Stat(cfg.ConfigPath + ".reload-pending")
+	reloadPending := pendingErr == nil
 	log.Printf("Yuchen Agent %s started, panel=%s, server_id=%s, config=%s", version, cfg.PanelBase, cfg.ServerID, cfg.ConfigPath)
 	for {
 		hash := fileHash(cfg.ConfigPath)
+		if reloadPending {
+			hash = ""
+		} // Disk contents do not prove reload succeeded.
 		syncResp, err := syncConfig(cfg, hash)
 		if err != nil {
 			lastMessage = "sync failed: " + err.Error()
@@ -88,9 +104,11 @@ func main() {
 		} else if syncResp.RestartRequired {
 			if cfg.ApplyConfig {
 				if err := applyXrayConfig(cfg, syncResp); err != nil {
+					reloadPending = true
 					lastMessage = "apply failed: " + err.Error()
 					log.Println(lastMessage)
 				} else {
+					reloadPending = false
 					lastMessage = "config applied: " + syncResp.DesiredConfigHash
 					log.Println(lastMessage)
 					hash = fileHash(cfg.ConfigPath)
@@ -129,13 +147,22 @@ func heartbeat(cfg Config, hb Heartbeat) error {
 }
 
 func postJSON(url, token string, payload []byte, out any) error {
+	origin, err := validatePanelURL(url)
+	if err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Agent-Token", token)
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(next *http.Request, via []*http.Request) error {
+		if len(via) > 5 || next.URL.Scheme != origin.Scheme || !strings.EqualFold(next.URL.Host, origin.Host) || next.URL.User != nil {
+			return fmt.Errorf("agent redirects must stay on the original origin")
+		}
+		return nil
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -151,6 +178,22 @@ func postJSON(url, token string, payload []byte, out any) error {
 		}
 	}
 	return nil
+}
+
+// validatePanelURL permits cleartext only for literal loopback addresses.
+func validatePanelURL(raw string) (*neturl.URL, error) {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.User != nil {
+		return nil, fmt.Errorf("invalid panel URL")
+	}
+	if u.Scheme == "https" {
+		return u, nil
+	}
+	ip := net.ParseIP(u.Hostname())
+	if u.Scheme == "http" && ip != nil && ip.IsLoopback() {
+		return u, nil
+	}
+	return nil, fmt.Errorf("remote agent panel URL must use HTTPS; HTTP is permitted only for loopback IPs")
 }
 
 func applyXrayConfig(cfg Config, syncResp SyncResponse) error {
@@ -175,24 +218,34 @@ func applyXrayConfig(cfg Config, syncResp SyncResponse) error {
 			return fmt.Errorf("xray test failed: %v; output=%s", err, strings.TrimSpace(out))
 		}
 	}
+	if err := os.WriteFile(cfg.ConfigPath+".reload-pending", []byte("reload pending"), 0600); err != nil {
+		return err
+	}
 	if err := os.Rename(tmp, cfg.ConfigPath); err != nil {
 		return err
 	}
 	// 让 xray 服务无论以 root/nobody 运行都能读取配置；生产版后续会改成更细粒度权限。
 	_ = os.Chmod(cfg.ConfigPath, 0644)
 	if cfg.ReloadCommand != "" {
-		if out, err := runShell(strings.ReplaceAll(cfg.ReloadCommand, "{config}", cfg.ConfigPath)); err != nil {
+		command := strings.ReplaceAll(cfg.ReloadCommand, "{config}", cfg.ConfigPath)
+		out, err := runShell(command)
+		if err != nil {
 			return fmt.Errorf("xray reload failed: %v; output=%s", err, strings.TrimSpace(out))
 		}
+		log.Printf("xray reload succeeded: command=%q output=%s", command, strings.TrimSpace(out))
+	} else {
+		return fmt.Errorf("xray reload command is empty; configuration is not confirmed active")
 	}
-	return nil
+	return os.Remove(cfg.ConfigPath + ".reload-pending")
 }
 
 func collectHeartbeat(cfg Config, hostname, hash, msg string) Heartbeat {
 	up, down := networkTotals()
+	memoryUsed, memoryTotal := memoryMetrics()
 	return Heartbeat{
 		ServerID: cfg.ServerID, Hostname: hostname, AgentVersion: version, XrayVersion: xrayVersion(), ConfigHash: hash, LastMessage: msg,
-		CPUUsage: loadAverage(), MemoryUsage: memoryUsage(), DiskUsage: diskUsage("/"), UploadTotal: up, DownloadTotal: down,
+		CPUCores: runtime.NumCPU(), MemTotalBytes: memoryTotal,
+		CPUUsage: loadAverage(), MemoryUsage: memoryUsed, DiskUsage: diskUsage("/"), UploadTotal: up, DownloadTotal: down,
 	}
 }
 
@@ -232,25 +285,34 @@ func loadAverage() float64 {
 	return v
 }
 
-func memoryUsage() float64 {
+// Reuse one /proc/meminfo read for utilization and total capacity.
+func memoryMetrics() (float64, int64) {
 	raw, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 0
+		return 0, 0
 	}
-	vals := map[string]float64{}
-	for _, line := range strings.Split(string(raw), "\n") {
+	return parseMemoryMetrics(string(raw))
+}
+
+func parseMemoryMetrics(raw string) (float64, int64) {
+	vals := map[string]int64{}
+	for _, line := range strings.Split(raw, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			key := strings.TrimSuffix(fields[0], ":")
-			vals[key], _ = strconv.ParseFloat(fields[1], 64)
+		if len(fields) >= 3 && fields[2] == "kB" {
+			value, err := strconv.ParseInt(fields[1], 10, 64)
+			if err == nil && value >= 0 {
+				vals[strings.TrimSuffix(fields[0], ":")] = value
+			}
 		}
 	}
-	total := vals["MemTotal"]
-	avail := vals["MemAvailable"]
-	if total <= 0 {
-		return 0
+	total, avail := vals["MemTotal"], vals["MemAvailable"]
+	if total <= 0 || total > (1<<63-1)/1024 {
+		return 0, 0
 	}
-	return round2((total - avail) * 100 / total)
+	if avail > total {
+		avail = total
+	}
+	return round2(float64(total-avail) * 100 / float64(total)), total * 1024
 }
 
 func diskUsage(path string) float64 {

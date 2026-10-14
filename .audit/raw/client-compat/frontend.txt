@@ -1,0 +1,32 @@
+COMMAND: node --test tests/*.test.mjs (also export synthetic frontend fixtures)
+✔ special password and IPv6 URI round-trip preserves endpoint and name (2.4692ms)
+✔ VMess network and default WS/gRPC transport parameters survive export (5.8946ms)
+✔ sing-box DNS is modern, selector choices valid, tags unique even when empty (0.7927ms)
+✔ subscription format URLs are explicit and token path is encoded (0.482ms)
+✔ optional VPN profile includes IPv4/IPv6 TUN, DNS hijack and loop prevention (0.593799ms)
+✔ empty, disabled, expired and fixed-exit clients have no ordinary node grant (3.0847ms)
+✔ retired protocols cannot be shared in any format (1.1465ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 605.117328
+COMMAND: npm run build
+
+> yuchen-panel-frontend@0.7.7.1 build
+> vue-tsc -b && vite build
+
+vite v6.3.5 building for production...
+transforming...
+✓ 59 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.66 kB │ gzip:  0.38 kB
+dist/assets/index-D9XQUgiS.css   32.80 kB │ gzip:  7.25 kB
+dist/assets/index-BFI-kDd3.js   272.39 kB │ gzip: 89.06 kB
+✓ built in 6.00s
+COMMAND: npx vue-tsc --noEmit
+EXIT_CODE: 0

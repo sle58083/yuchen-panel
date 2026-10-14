@@ -1,0 +1,12 @@
+COMMAND: bash -n install.sh
+EXIT_CODE: 0
+COMMAND: bash -n deploy/install.sh
+EXIT_CODE: 0
+COMMAND: bash -n deploy/agent-install.sh
+EXIT_CODE: 0
+COMMAND: bash -n deploy/uninstall.sh
+EXIT_CODE: 0
+COMMAND: bash -n scripts/build-fast-release.sh
+EXIT_CODE: 0
+COMMAND: bash -n scripts/yuchen-panel
+EXIT_CODE: 0

@@ -95,6 +95,9 @@ func (r *Router) relayByID(w http.ResponseWriter, req *http.Request) {
 					next = append(next, rid)
 				}
 			}
+			if len(next) != len(c.RelayRouteIDs) && len(next) == 0 && len(c.NodeIDs) == 0 {
+				c.Enabled = false
+			}
 			c.RelayRouteIDs = next
 			r.store.Data.Clients[cid] = c
 		}

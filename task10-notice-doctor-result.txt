@@ -1,0 +1,5 @@
+NOTICE_PASS: fresh install silent; upgrade/reinstall displays:
+⚠️ 安全提示：本次安装已轮换 JWT 签名密钥。
+所有已登录用户需要重新登录，管理后台的旧会话将失效。
+Doctor result: PASS (0 warning(s), 5 skipped)
+DOCTOR_PASS: Docker skip counts, actual container/proxy failures and fast service checks (mock commands)

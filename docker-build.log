@@ -1,0 +1,321 @@
+time="2026-10-13T20:04:26+08:00" level=warning msg="Docker Compose is configured to build using Bake, but buildx isn't installed"
+#0 building with "default" instance using docker driver
+
+#1 [yuchen-panel-api internal] load build definition from Dockerfile
+#1 transferring dockerfile: 802B 0.0s done
+#1 DONE 0.0s
+
+#2 [yuchen-panel-api internal] load metadata for docker.io/library/golang:1.23
+#2 ...
+
+#3 [yuchen-panel-api internal] load metadata for docker.io/library/debian:bookworm-slim
+#3 DONE 2.2s
+
+#2 [yuchen-panel-api internal] load metadata for docker.io/library/golang:1.23
+#2 DONE 2.4s
+
+#4 [yuchen-panel-api internal] load .dockerignore
+#4 transferring context: 199B 0.1s done
+#4 DONE 0.1s
+
+#5 [yuchen-panel-api stage-1 1/5] FROM docker.io/library/debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+#5 resolve docker.io/library/debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 0.0s done
+#5 DONE 0.0s
+
+#6 [yuchen-panel-api stage-1 2/5] WORKDIR /app
+#6 CACHED
+
+#7 [yuchen-panel-api builder 1/8] FROM docker.io/library/golang:1.23@sha256:60deed95d3888cc5e4d9ff8a10c54e5edc008c6ae3fba6187be6fb592e19e8c0
+#7 resolve docker.io/library/golang:1.23@sha256:60deed95d3888cc5e4d9ff8a10c54e5edc008c6ae3fba6187be6fb592e19e8c0 0.0s done
+#7 DONE 0.1s
+
+#8 [yuchen-panel-api builder 2/8] WORKDIR /src
+#8 CACHED
+
+#9 [yuchen-panel-api internal] load build context
+#9 transferring context: 3.36kB 0.4s done
+#9 DONE 0.4s
+
+#10 [yuchen-panel-api builder 3/8] RUN apt-get update     && apt-get install -y --no-install-recommends bash curl jq python3 unzip     && rm -rf /var/lib/apt/lists/*
+#10 1.103 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+#10 1.678 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#10 2.091 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#10 2.565 Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
+#10 4.492 Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
+#10 4.698 Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [349 kB]
+#10 5.826 Fetched 9388 kB in 5s (1769 kB/s)
+#10 5.826 Reading package lists...
+#10 6.717 Reading package lists...
+#10 7.584 Building dependency tree...
+#10 7.786 Reading state information...
+#10 7.987 python3 is already the newest version (3.11.2-1+b1).
+#10 7.987 python3 set to manually installed.
+#10 7.987 The following additional packages will be installed:
+#10 7.987   libcurl3-gnutls libcurl4 libjq1 libonig5
+#10 7.988 Suggested packages:
+#10 7.988   bash-doc zip
+#10 7.988 Recommended packages:
+#10 7.988   bash-completion
+#10 8.057 The following NEW packages will be installed:
+#10 8.057   jq libjq1 libonig5 unzip
+#10 8.057 The following packages will be upgraded:
+#10 8.059   bash curl libcurl3-gnutls libcurl4
+#10 8.503 4 upgraded, 4 newly installed, 0 to remove and 62 not upgraded.
+#10 8.503 Need to get 3139 kB of archives.
+#10 8.503 After this operation, 1560 kB of additional disk space will be used.
+#10 8.503 Get:1 http://deb.debian.org/debian bookworm/main amd64 bash amd64 5.2.15-2+b13 [1491 kB]
+#10 9.178 Get:2 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]
+#10 9.387 Get:3 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]
+#10 9.568 Get:4 http://deb.debian.org/debian bookworm/main amd64 libonig5 amd64 6.9.8-1 [188 kB]
+#10 9.573 Get:5 http://deb.debian.org/debian bookworm/main amd64 libjq1 amd64 1.6-2.1+deb12u2 [136 kB]
+#10 9.576 Get:6 http://deb.debian.org/debian bookworm/main amd64 jq amd64 1.6-2.1+deb12u2 [64.0 kB]
+#10 9.577 Get:7 http://deb.debian.org/debian bookworm/main amd64 libcurl3-gnutls amd64 7.88.1-10+deb12u15 [386 kB]
+#10 9.624 Get:8 http://deb.debian.org/debian-security bookworm-security/main amd64 unzip amd64 6.0-28+deb12u1 [167 kB]
+#10 9.973 debconf: delaying package configuration, since apt-utils is not installed
+#10 10.01 Fetched 3139 kB in 2s (1949 kB/s)
+#10 10.06 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%
+#10 ...
+
+#11 [yuchen-panel-api stage-1 3/5] RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates     && update-ca-certificates     && rm -rf /var/lib/apt/lists/*
+#11 1.291 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+#11 1.675 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#11 2.281 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#11 2.483 Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
+#11 4.418 Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
+#11 4.614 Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [349 kB]
+#11 5.774 Fetched 9388 kB in 5s (1772 kB/s)
+#11 5.774 Reading package lists...
+#11 6.586 Reading package lists...
+#11 7.411 Building dependency tree...
+#11 7.581 Reading state information...
+#11 7.769 The following additional packages will be installed:
+#11 7.769   libssl3 openssl
+#11 7.804 The following NEW packages will be installed:
+#11 7.806   ca-certificates libssl3 openssl
+#11 8.038 0 upgraded, 3 newly installed, 0 to remove and 1 not upgraded.
+#11 8.038 Need to get 3643 kB of archives.
+#11 8.038 After this operation, 8955 kB of additional disk space will be used.
+#11 8.038 Get:1 http://deb.debian.org/debian-security bookworm-security/main amd64 libssl3 amd64 3.0.22-1~deb12u1 [2039 kB]
+#11 9.181 Get:2 http://deb.debian.org/debian-security bookworm-security/main amd64 openssl amd64 3.0.22-1~deb12u1 [1442 kB]
+#11 9.624 Get:3 http://deb.debian.org/debian-security bookworm-security/main amd64 ca-certificates all 20250419~deb12u1 [162 kB]
+#11 9.876 debconf: delaying package configuration, since apt-utils is not installed
+#11 9.917 Fetched 3643 kB in 2s (2008 kB/s)
+#11 9.966 Selecting previously unselected package libssl3:amd64.
+#11 9.966 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6096 files and directories currently installed.)
+#11 10.00 Preparing to unpack .../libssl3_3.0.22-1~deb12u1_amd64.deb ...
+#11 10.02 Unpacking libssl3:amd64 (3.0.22-1~deb12u1) ...
+#11 ...
+
+#10 [yuchen-panel-api builder 3/8] RUN apt-get update     && apt-get install -y --no-install-recommends bash curl jq python3 unzip     && rm -rf /var/lib/apt/lists/*
+#10 10.06 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 15611 files and directories currently installed.)
+#10 10.15 Preparing to unpack .../bash_5.2.15-2+b13_amd64.deb ...
+#10 10.20 Unpacking bash (5.2.15-2+b13) over (5.2.15-2+b8) ...
+#10 10.98 Setting up bash (5.2.15-2+b13) ...
+#10 11.02 update-alternatives: using /usr/share/man/man7/bash-builtins.7.gz to provide /usr/share/man/man7/builtins.7.gz (builtins.7.gz) in auto mode
+#10 11.07 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 15611 files and directories currently installed.)
+#10 11.08 Preparing to unpack .../0-curl_7.88.1-10+deb12u15_amd64.deb ...
+#10 11.10 Unpacking curl (7.88.1-10+deb12u15) over (7.88.1-10+deb12u12) ...
+#10 11.21 Preparing to unpack .../1-libcurl4_7.88.1-10+deb12u15_amd64.deb ...
+#10 11.24 Unpacking libcurl4:amd64 (7.88.1-10+deb12u15) over (7.88.1-10+deb12u12) ...
+#10 11.36 Selecting previously unselected package libonig5:amd64.
+#10 11.36 Preparing to unpack .../2-libonig5_6.9.8-1_amd64.deb ...
+#10 11.37 Unpacking libonig5:amd64 (6.9.8-1) ...
+#10 11.45 Selecting previously unselected package libjq1:amd64.
+#10 11.45 Preparing to unpack .../3-libjq1_1.6-2.1+deb12u2_amd64.deb ...
+#10 11.46 Unpacking libjq1:amd64 (1.6-2.1+deb12u2) ...
+#10 11.52 Selecting previously unselected package jq.
+#10 11.52 Preparing to unpack .../4-jq_1.6-2.1+deb12u2_amd64.deb ...
+#10 11.53 Unpacking jq (1.6-2.1+deb12u2) ...
+#10 11.59 Preparing to unpack .../5-libcurl3-gnutls_7.88.1-10+deb12u15_amd64.deb ...
+#10 11.61 Unpacking libcurl3-gnutls:amd64 (7.88.1-10+deb12u15) over (7.88.1-10+deb12u12) ...
+#10 11.74 Selecting previously unselected package unzip.
+#10 11.74 Preparing to unpack .../6-unzip_6.0-28+deb12u1_amd64.deb ...
+#10 11.75 Unpacking unzip (6.0-28+deb12u1) ...
+#10 11.83 Setting up unzip (6.0-28+deb12u1) ...
+#10 11.85 Setting up libcurl3-gnutls:amd64 (7.88.1-10+deb12u15) ...
+#10 11.87 Setting up libcurl4:amd64 (7.88.1-10+deb12u15) ...
+#10 11.89 Setting up curl (7.88.1-10+deb12u15) ...
+#10 11.91 Setting up libonig5:amd64 (6.9.8-1) ...
+#10 11.93 Setting up libjq1:amd64 (1.6-2.1+deb12u2) ...
+#10 11.95 Setting up jq (1.6-2.1+deb12u2) ...
+#10 11.97 Processing triggers for libc-bin (2.36-9+deb12u10) ...
+#10 12.25 Processing triggers for debianutils (5.7-0.5~deb12u1) ...
+#10 DONE 12.5s
+
+#11 [yuchen-panel-api stage-1 3/5] RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates     && update-ca-certificates     && rm -rf /var/lib/apt/lists/*
+#11 10.26 Selecting previously unselected package openssl.
+#11 10.26 Preparing to unpack .../openssl_3.0.22-1~deb12u1_amd64.deb ...
+#11 10.27 Unpacking openssl (3.0.22-1~deb12u1) ...
+#11 10.48 Selecting previously unselected package ca-certificates.
+#11 10.48 Preparing to unpack .../ca-certificates_20250419~deb12u1_all.deb ...
+#11 10.49 Unpacking ca-certificates (20250419~deb12u1) ...
+#11 10.61 Setting up libssl3:amd64 (3.0.22-1~deb12u1) ...
+#11 10.65 Setting up openssl (3.0.22-1~deb12u1) ...
+#11 10.69 Setting up ca-certificates (20250419~deb12u1) ...
+#11 10.85 debconf: unable to initialize frontend: Dialog
+#11 10.85 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#11 10.85 debconf: falling back to frontend: Readline
+#11 10.85 debconf: unable to initialize frontend: Readline
+#11 10.85 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+#11 10.85 debconf: falling back to frontend: Teletype
+#11 11.78 Updating certificates in /etc/ssl/certs...
+#11 ...
+
+#12 [yuchen-panel-api builder 4/8] COPY backend/ ./backend/
+#12 DONE 0.1s
+
+#13 [yuchen-panel-api builder 5/8] COPY install.sh ./install.sh
+#13 DONE 0.1s
+
+#14 [yuchen-panel-api builder 6/8] WORKDIR /src/backend
+#14 DONE 0.1s
+
+#11 [yuchen-panel-api stage-1 3/5] RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates     && update-ca-certificates     && rm -rf /var/lib/apt/lists/*
+#11 12.99 150 added, 0 removed; done.
+#11 13.06 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#11 13.14 Processing triggers for ca-certificates (20250419~deb12u1) ...
+#11 13.16 Updating certificates in /etc/ssl/certs...
+#11 14.03 0 added, 0 removed; done.
+#11 14.03 Running hooks in /etc/ca-certificates/update.d...
+#11 14.03 done.
+#11 14.07 Updating certificates in /etc/ssl/certs...
+#11 15.04 0 added, 0 removed; done.
+#11 15.04 Running hooks in /etc/ca-certificates/update.d...
+#11 15.05 done.
+#11 DONE 15.1s
+
+#15 [yuchen-panel-api stage-1 4/5] RUN mkdir -p /app/data
+#15 DONE 0.4s
+
+#16 [yuchen-panel-api builder 7/8] RUN env PATH=/usr/local/go/bin:/bin /usr/local/go/bin/go test -run '^TestSubscriptionFormatRouting$' ./internal/api
+#16 12.40 ok  	yuchen-panel/backend/internal/api	0.008s
+#16 DONE 12.7s
+
+#17 [yuchen-panel-api builder 8/8] RUN go test -v ./... && go build -o /out/yuchen-panel-api ./cmd/server
+#17 1.480 ?   	yuchen-panel/backend/cmd/server	[no test files]
+#17 2.572 ?   	yuchen-panel/backend/internal/model	[no test files]
+#17 2.572 ?   	yuchen-panel/backend/internal/security	[no test files]
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret/#00
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret/short
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret/dev-secret-change-me
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret/change-me-please
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret/please-change-this-secret-before-public-deploy
+#17 4.979 === RUN   TestNewRouterRejectsWeakSecret/________________________________________
+#17 4.979 --- PASS: TestNewRouterRejectsWeakSecret (0.00s)
+#17 4.979     --- PASS: TestNewRouterRejectsWeakSecret/#00 (0.00s)
+#17 4.979     --- PASS: TestNewRouterRejectsWeakSecret/short (0.00s)
+#17 4.979     --- PASS: TestNewRouterRejectsWeakSecret/dev-secret-change-me (0.00s)
+#17 4.979     --- PASS: TestNewRouterRejectsWeakSecret/change-me-please (0.00s)
+#17 4.979     --- PASS: TestNewRouterRejectsWeakSecret/please-change-this-secret-before-public-deploy (0.00s)
+#17 4.979     --- PASS: TestNewRouterRejectsWeakSecret/________________________________________ (0.00s)
+#17 4.979 === RUN   TestWithAuthRejectsUnknownOrDisabledAccount
+#17 4.979 === RUN   TestWithAuthRejectsUnknownOrDisabledAccount/unknown
+#17 4.979 === RUN   TestWithAuthRejectsUnknownOrDisabledAccount/disabled
+#17 4.979 === RUN   TestWithAuthRejectsUnknownOrDisabledAccount/wrong-role
+#17 4.979 === RUN   TestWithAuthRejectsUnknownOrDisabledAccount/valid
+#17 4.979 --- PASS: TestWithAuthRejectsUnknownOrDisabledAccount (0.00s)
+#17 4.979     --- PASS: TestWithAuthRejectsUnknownOrDisabledAccount/unknown (0.00s)
+#17 4.979     --- PASS: TestWithAuthRejectsUnknownOrDisabledAccount/disabled (0.00s)
+#17 4.979     --- PASS: TestWithAuthRejectsUnknownOrDisabledAccount/wrong-role (0.00s)
+#17 4.979     --- PASS: TestWithAuthRejectsUnknownOrDisabledAccount/valid (0.00s)
+#17 4.979 === RUN   TestDeletingLastAuthorizationDisablesOnlyAffectedClient
+#17 4.979 === RUN   TestDeletingLastAuthorizationDisablesOnlyAffectedClient/node
+#17 4.979 === RUN   TestDeletingLastAuthorizationDisablesOnlyAffectedClient/relay
+#17 4.979 --- PASS: TestDeletingLastAuthorizationDisablesOnlyAffectedClient (0.00s)
+#17 4.979     --- PASS: TestDeletingLastAuthorizationDisablesOnlyAffectedClient/node (0.00s)
+#17 4.979     --- PASS: TestDeletingLastAuthorizationDisablesOnlyAffectedClient/relay (0.00s)
+#17 4.979 === RUN   TestSubscriptionUsesExplicitGrantsAndRetiresShadowsocks
+#17 4.979 --- PASS: TestSubscriptionUsesExplicitGrantsAndRetiresShadowsocks (0.00s)
+#17 4.979 === RUN   TestNewShadowsocksNodeIsRejected
+#17 4.979 --- PASS: TestNewShadowsocksNodeIsRejected (0.00s)
+#17 4.979 === RUN   TestInstallerRefreshesWeakSecretWithoutEvaluatingEnv
+#17 4.979 --- PASS: TestInstallerRefreshesWeakSecretWithoutEvaluatingEnv (0.15s)
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/valid
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/version-traversal
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/shell
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/package-traversal
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/package-dotdot
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/http
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/root
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/multiple-root
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/relative-root
+#17 4.979 === RUN   TestInstallerRejectsMaliciousManifestBeforeExtraction/parent-root
+#17 4.979 --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction (2.15s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/valid (0.21s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/version-traversal (0.21s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/shell (0.21s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/package-traversal (0.22s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/package-dotdot (0.21s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/http (0.21s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/root (0.21s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/multiple-root (0.22s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/relative-root (0.20s)
+#17 4.979     --- PASS: TestInstallerRejectsMaliciousManifestBeforeExtraction/parent-root (0.24s)
+#17 4.979 === RUN   TestInstallerExtractsIntoFreshDirectory
+#17 4.979 --- PASS: TestInstallerExtractsIntoFreshDirectory (0.03s)
+#17 4.979 === RUN   TestSubscriptionFormatRouting
+#17 4.979 --- PASS: TestSubscriptionFormatRouting (0.00s)
+#17 4.979 === RUN   TestSingBoxDNSUsesModernSchema
+#17 4.979 --- PASS: TestSingBoxDNSUsesModernSchema (0.00s)
+#17 4.979 === RUN   TestMobileURIPasswordAndIPv6RoundTrip
+#17 4.979 --- PASS: TestMobileURIPasswordAndIPv6RoundTrip (0.00s)
+#17 4.979 === RUN   TestNodeShareNameMatchesFrontendFixture
+#17 4.979 --- PASS: TestNodeShareNameMatchesFrontendFixture (0.00s)
+#17 4.979 === RUN   TestSubscriptionNamesAreUniqueAndTraceable
+#17 4.979 --- PASS: TestSubscriptionNamesAreUniqueAndTraceable (0.00s)
+#17 4.979 === RUN   TestExportClientFixtures
+#17 4.979     subscription_formats_test.go:457: fixture export not requested
+#17 4.979 --- SKIP: TestExportClientFixtures (0.00s)
+#17 4.979 === RUN   TestComparePanelVersions
+#17 4.979 --- PASS: TestComparePanelVersions (0.00s)
+#17 4.979 === RUN   TestUpdateAvailableDoesNotAllowDowngrade
+#17 4.979 --- PASS: TestUpdateAvailableDoesNotAllowDowngrade (0.00s)
+#17 4.979 === RUN   TestWriteUpgradeRunnerEscapesShellMetachars
+#17 4.979 === RUN   TestWriteUpgradeRunnerEscapesShellMetachars/1.0.3-$(id)
+#17 4.979 === RUN   TestWriteUpgradeRunnerEscapesShellMetachars/`id`
+#17 4.979 === RUN   TestWriteUpgradeRunnerEscapesShellMetachars/single'quote
+#17 4.979 === RUN   TestWriteUpgradeRunnerEscapesShellMetachars/double"quote
+#17 4.979 --- PASS: TestWriteUpgradeRunnerEscapesShellMetachars (0.04s)
+#17 4.979     --- PASS: TestWriteUpgradeRunnerEscapesShellMetachars/1.0.3-$(id) (0.01s)
+#17 4.979     --- PASS: TestWriteUpgradeRunnerEscapesShellMetachars/`id` (0.01s)
+#17 4.979     --- PASS: TestWriteUpgradeRunnerEscapesShellMetachars/single'quote (0.01s)
+#17 4.979     --- PASS: TestWriteUpgradeRunnerEscapesShellMetachars/double"quote (0.01s)
+#17 4.979 === RUN   TestFetchManifestRequiresHTTPSAndSameOriginRedirects
+#17 4.979 --- PASS: TestFetchManifestRequiresHTTPSAndSameOriginRedirects (0.01s)
+#17 4.979 PASS
+#17 4.979 ok  	yuchen-panel/backend/internal/api	2.399s
+#17 4.979 === RUN   TestSeedDefaultAdminRequiresExplicitCredentials
+#17 4.979 --- PASS: TestSeedDefaultAdminRequiresExplicitCredentials (0.28s)
+#17 4.979 === RUN   TestMissingHistoricalHashDisablesAccount
+#17 4.979 --- PASS: TestMissingHistoricalHashDisablesAccount (0.00s)
+#17 4.979 PASS
+#17 4.979 ok  	yuchen-panel/backend/internal/store	0.286s
+#17 4.979 === RUN   TestGenerateServerConfigExcludesUnauthorizedClients
+#17 4.979 --- PASS: TestGenerateServerConfigExcludesUnauthorizedClients (0.00s)
+#17 4.979 === RUN   TestNoShadowsocksInGeneratedConfig
+#17 4.979 --- PASS: TestNoShadowsocksInGeneratedConfig (0.00s)
+#17 4.979 PASS
+#17 4.979 ok  	yuchen-panel/backend/internal/xray	0.004s
+#17 DONE 5.7s
+
+#18 [yuchen-panel-api stage-1 5/5] COPY --from=builder /out/yuchen-panel-api /app/yuchen-panel-api
+#18 DONE 0.1s
+
+#19 [yuchen-panel-api] exporting to image
+#19 exporting layers
+#19 exporting layers 1.0s done
+#19 exporting manifest sha256:b666864c5b629a7811edeea3e62a73d3b3067ea968809a18adb0b8d6083179a7 0.0s done
+#19 exporting config sha256:14d207cb7c9fb89712e86936835b5ffac42ef5c97523b55e4a3129d88c225734 0.0s done
+#19 exporting attestation manifest sha256:5c62547e13b5d45bf87d00b62a49b2660ff659974ce4cba69b56a302e4cd9f21 0.0s done
+#19 exporting manifest list sha256:929380afe75fa37e6fc313ed6778e0ec569bff01d342eb03c9cf2f8ae3feeebc
+#19 exporting manifest list sha256:929380afe75fa37e6fc313ed6778e0ec569bff01d342eb03c9cf2f8ae3feeebc 0.0s done
+#19 naming to docker.io/library/audit-fix-yuchen-panel-api:latest done
+#19 unpacking to docker.io/library/audit-fix-yuchen-panel-api:latest
+#19 unpacking to docker.io/library/audit-fix-yuchen-panel-api:latest 0.4s done
+#19 DONE 1.6s
+
+#20 [yuchen-panel-api] resolving provenance for metadata file
+#20 DONE 0.0s
+ yuchen-panel-api  Built

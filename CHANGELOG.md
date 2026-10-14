@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — 发布前收尾
+
+- 修复 Docker 模式宿主 Nginx 缺少根 API/sub/share 路由导致 404；容器根 API 路由不再被 Vue 回退规则截获。
+- 升级或重装检测到既有运行目录 .env 时，成功输出明确提示 JWT 签名密钥已轮换，所有旧会话失效，需要重新登录。全新安装不显示该提示。
+- Doctor 区分 Docker 容器服务与 systemd 服务；未部署 Agent 的检查显示 SKIP，真正的容器或 API/反代故障仍显示 FAIL。
+
+
+## Unreleased — C10 client compatibility
+
+- C10 / P2-023: the backend independently serves sing-box JSON for singbox/sing-box/sb/json aliases; both backend and frontend use typed UDP DNS and a default domain resolver. Minimum supported core is sing-box 1.12.0. No legacy export branch is provided.
+- **Compatibility change:** default and unknown-format subscriptions now return base64 URI lists. Tools expecting the previous unencoded response must request `format=raw`. Explicit formats override UA detection; format selection is logged without bearer tokens.
+- C10 / P2-022: Trojan password, Unicode remarks and IPv6 URI endpoints round-trip correctly in backend and frontend. VMess Clash export includes its transport network; gRPC defaults agree with the server's `yuchen` service name.
+- C10 / P2-021: reserved/duplicate proxy names are made unique in Clash and sing-box exports. Empty subscriptions keep a valid direct selector.
+- Optional `profile=tun` / UI VPN export adds TUN with MTU 1400, DNS hijack and automatic interface detection. Default desktop config remains localhost mixed port 2080; running VPN requires client permissions.
+- Correct the C4 frontend expiry regression: Go's zero time means permanent authorization, not an expired client. Remove stale SS advertising from the client share UI; traffic quota labels explicitly say display only (P2-008 enforcement deferred).
+- Add `scripts/verify-clients.sh` and `docs/CLIENT-COMPAT.md`. Device/connection T1–T6 remain operator-required; config-only core checks do not establish throughput or real node connectivity. No reinstall is required for client export; deploy the tested branch API and rebuilt web assets on a test machine before acceptance.
+
+## Unreleased — audit Batch 1
+
+- **C4 / P1-010, P1-011, breaking:** empty node bindings no longer grant every node. Rebind intended nodes explicitly; deleting the last node/relay authorization disables the affected client. Fixed-exit relay grants stay independent of ordinary node grants.
+- **Shadowsocks retired:** old records remain for migration, but no core config or subscription is emitted, new SS nodes are rejected, credentials generators and client export branches are removed, and the UI shows a migration banner. No existing SS consumers were reported by the operator.
+- C4 / P1-016 (partial): remote Agents require HTTPS and same-origin redirects; literal loopback HTTP remains available. Configure HTTPS before restarting a remote Agent. Without a domain, the panel installer retains HTTP and prints an SSH tunnel recommendation; panel TLS deployment remains deferred.
+
+- C3 / P1-001, P2-005: jq is now required by both installers. Manifest values and installation paths are validated, release extraction uses a new mktemp directory, and downloads reject non-HTTPS redirects. Custom manifests must use the documented version/package whitelist and valid string fields; extraction preserves existing release directories.
+
+- C2 / P1-008: upgrade runner assignments use checked Bash single-quoted literals and reject CR/LF/NUL. Package downloads permit only HTTPS redirects; manifest downloads permit at most five same-host HTTPS redirects. Configure an HTTPS manifest URL before upgrading; custom API health port handling remains tracked as P2-027.
+
+- **C1 / P0-001, breaking:** API startup rejects missing, short or public JWT secrets. Set `YC_JWT_SECRET` to a cryptographically random value of at least 32 characters before restarting manual/Docker deployments. The root installer refreshes weak historical `.env` signing keys before stopping services; existing tokens become invalid after restart. The deploy installer already generates a random 64-character key.
+- First initialization requires explicit `YC_ADMIN_USERNAME` and a password of at least 12 characters. Compose rejects missing credentials. Existing accounts with missing hashes are disabled; recover them with a deliberate offline password reset. Existing valid accounts are preserved; operators must change any historical publicly known password.
+- Every authenticated request checks that its database account still exists, is enabled and has `super_admin` privileges. Audit identity comes from the database.
+
 ## V0.7.7.5 stability-polish
 
 - 统一 README、CHANGELOG、构建脚本、前端文案、后端版本、Agent 版本和安装脚本版本，减少发布包与远程 manifest 不一致问题。

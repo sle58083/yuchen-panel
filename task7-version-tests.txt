@@ -1,0 +1,26 @@
+?   	yuchen-panel/backend/cmd/server	[no test files]
+=== RUN   TestNewNodeSecurityDefaultsAndLegacyNone
+    nodes_test.go:37: after: VLESS security=reality; Reality keys generated=true
+--- PASS: TestNewNodeSecurityDefaultsAndLegacyNone (0.35s)
+=== RUN   TestComparePanelVersions
+--- PASS: TestComparePanelVersions (0.00s)
+=== RUN   TestVersionMatchesTargetSemanticBoundaries
+--- PASS: TestVersionMatchesTargetSemanticBoundaries (0.00s)
+=== RUN   TestCompareSemanticVersionNumericOrdering
+--- PASS: TestCompareSemanticVersionNumericOrdering (0.00s)
+=== RUN   TestCompareSemanticVersionPrereleaseNumbers
+--- PASS: TestCompareSemanticVersionPrereleaseNumbers (0.00s)
+PASS
+ok  	yuchen-panel/backend/internal/api	0.365s
+?   	yuchen-panel/backend/internal/model	[no test files]
+?   	yuchen-panel/backend/internal/security	[no test files]
+testing: warning: no tests to run
+PASS
+ok  	yuchen-panel/backend/internal/store	0.008s [no tests to run]
+=== RUN   TestVersionFileParsesVersionAndChannel
+--- PASS: TestVersionFileParsesVersionAndChannel (0.00s)
+PASS
+ok  	yuchen-panel/backend/internal/version	0.014s
+testing: warning: no tests to run
+PASS
+ok  	yuchen-panel/backend/internal/xray	0.008s [no tests to run]

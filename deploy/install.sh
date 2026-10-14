@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.2-stable"
+RELEASE_ID="$(tr -d '\r\n' < "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION")"
+VERSION=${RELEASE_ID%-stable}
+CHANNEL=stable
+if [[ "$VERSION" == *-* ]]; then CHANNEL=${VERSION#*-}; CHANNEL=${CHANNEL%%.*}; fi
+
+# APP_DIR owns runtime files and the real .env; SRC_DIR owns source/build files.
 APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}
 INFO_FILE="$CONFIG_DIR/panel.info"
@@ -15,6 +20,7 @@ SETUP_XRAY_SERVICE=${SETUP_XRAY_SERVICE:-true}
 YC_FORCE_INSTALL_XRAY=${YC_FORCE_INSTALL_XRAY:-0}
 YC_SKIP_XRAY_INSTALL=${YC_SKIP_XRAY_INSTALL:-0}
 FRESH_INSTALL=${FRESH_INSTALL:-false}
+YC_DOCKER_ISOLATED=${YC_DOCKER_ISOLATED:-0}
 YC_INSTALL_MODE=${YC_INSTALL_MODE:-auto}   # auto | fast | docker
 
 export DEBIAN_FRONTEND=noninteractive
@@ -23,7 +29,7 @@ export NEEDRESTART_SUSPEND=1
 
 APT_UPDATED=false
 START_TS="$(date +%s)"
-SRC_DIR=""
+SRC_DIR="" # Source/clone directory: never assume it contains runtime credentials.
 PUBLIC_IP=""
 LOCAL_HOST=""
 COMPOSE=""
@@ -32,6 +38,7 @@ ADMIN_USERNAME=""
 ADMIN_PASSWORD=""
 ADMIN_PASSWORD_DISPLAY=""
 JWT_SECRET=""
+JWT_ROTATED=false
 AGENT_SECRET=""
 MANIFEST_URL_TO_WRITE=""
 DEFAULT_UPDATE_MANIFEST_URL="https://raw.githubusercontent.com/sle58083/yuchen-panel/main/version.json"
@@ -109,7 +116,7 @@ compose_cmd() {
   if docker compose version >/dev/null 2>&1; then
     echo "docker compose"
   elif command -v docker-compose >/dev/null 2>&1; then
-    echo "docker-compose"
+    echo "" # v1 is unsupported: avoid destructive ContainerConfig failures
   else
     echo ""
   fi
@@ -150,9 +157,10 @@ install_base_deps() {
   local missing=()
   need_cmd curl || missing+=(curl)
   need_cmd python3 || missing+=(python3)
+  need_cmd jq || missing+=(jq)
   need_cmd rsync || missing+=(rsync)
   need_cmd ss || missing+=(iproute2)
-  need_cmd nginx || missing+=(nginx)
+  if [[ "$YC_DOCKER_ISOLATED" != "1" ]]; then need_cmd nginx || missing+=(nginx); fi
   need_cmd unzip || missing+=(unzip)
   [[ -f /etc/ssl/certs/ca-certificates.crt ]] || missing+=(ca-certificates)
 
@@ -212,34 +220,74 @@ install_docker_if_missing() {
     echo "Docker already installed: $(docker --version 2>/dev/null || true)"
   fi
 
-  systemctl enable docker >/dev/null 2>&1 || true
-  systemctl start docker >/dev/null 2>&1 || true
+  if [[ "$YC_DOCKER_ISOLATED" != "1" ]]; then
+    systemctl enable docker >/dev/null 2>&1 || true
+    systemctl start docker >/dev/null 2>&1 || true
+  fi
 
   if docker compose version >/dev/null 2>&1; then
     echo "Docker Compose v2 available: $(docker compose version 2>/dev/null || true)"
     return 0
   fi
   if command -v docker-compose >/dev/null 2>&1; then
-    echo "Docker Compose v1 available: $(docker-compose --version 2>/dev/null || true)"
-    return 0
+    echo "Docker Compose v1 is unsupported; installing the v2 plugin before touching existing services."
   fi
 
-  echo "Docker Compose not found, installing compose package..."
+  echo "Docker Compose v2 not found, trying distribution packages..."
   if command -v apt-get >/dev/null 2>&1; then
     apt_update_once
-    if apt-get install -y docker-compose-plugin; then
-      echo "Docker Compose plugin installed."
-    else
-      echo "docker-compose-plugin not available from current apt sources, fallback to docker-compose v1."
-      apt-get install -y docker-compose
-    fi
+    for pkg in docker-compose-v2 docker-compose-plugin docker-compose; do
+      # Avoid apt's missing-package error; the candidate may not exist in these sources.
+      apt-cache show "$pkg" >/dev/null 2>&1 || continue
+      if apt-get install -y "$pkg" && docker compose version >/dev/null 2>&1; then
+        echo "Docker Compose v2 installed via $pkg."
+        return 0
+      fi
+    done
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y docker-compose-plugin || yum install -y docker-compose
+    for pkg in docker-compose-plugin docker-compose; do
+      if yum install -y "$pkg" && docker compose version >/dev/null 2>&1; then return 0; fi
+    done
   fi
+  compose_install_guidance
+  return 1
 }
 
 
+
+compose_install_guidance() {
+  cat >&2 <<'GUIDE'
+ERROR: Docker Compose v2 unavailable; existing runtime was left untouched.
+Ubuntu/Debian distribution sources: sudo apt-get update && sudo apt-get install -y docker-compose-v2
+Docker official repository setup:
+  https://docs.docker.com/engine/install/ubuntu/#install-using-the-apt-repository
+  https://docs.docker.com/engine/install/debian/#install-using-the-apt-repository
+After configuring that repository: sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+RHEL/CentOS repository setup: https://docs.docker.com/engine/install/centos/#install-using-the-rpm-repository
+After configuring that repository: sudo yum install -y docker-compose-plugin
+Verify before retrying: docker compose version
+GUIDE
+}
+
+validate_compose_source() {
+  # The source Compose file defines builds; APP_DIR/.env supplies runtime values.
+  # Fresh-install placeholders live only in this subshell, never in the parent.
+  (
+    cd "$SRC_DIR"
+    if [[ -f "$APP_DIR/.env" ]]; then
+      unset YC_JWT_SECRET YC_ADMIN_USERNAME YC_ADMIN_PASSWORD
+      ${COMPOSE} --env-file "$APP_DIR/.env" -f "$SRC_DIR/docker-compose.yml" config >/dev/null
+    else
+      YC_JWT_SECRET=validation-only-placeholder-32-characters \
+      YC_ADMIN_USERNAME=validation-only \
+      YC_ADMIN_PASSWORD=validation-only-password \
+      ${COMPOSE} -f "$SRC_DIR/docker-compose.yml" config >/dev/null
+    fi
+  )
+}
+
 installer_backup_existing() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Pre-install backup"
   local has_existing="false"
   for item in \
@@ -313,6 +361,7 @@ EOF_META
 }
 
 cleanup_old_runtime() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Cleaning old Yuchen Panel runtime"
   systemctl stop yuchen-panel-api 2>/dev/null || true
   systemctl stop yuchen-agent 2>/dev/null || true
@@ -324,6 +373,7 @@ cleanup_old_runtime() {
 }
 
 disable_default_nginx_sites() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Disabling default Nginx 80 site"
   rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
   rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
@@ -346,15 +396,14 @@ API Token=${AGENT_SECRET}
 INSTALL_DIR=${APP_DIR}
 CONFIG_DIR=${CONFIG_DIR}
 VERSION=${VERSION}
+CHANNEL=${CHANNEL}
 INSTALL_MODE=${INSTALL_MODE}
 EOF_INFO
   chmod 600 "$INFO_FILE"
 }
 
-write_host_nginx_docker() {
-  step "Writing host Nginx reverse proxy"
-  mkdir -p /etc/nginx/conf.d
-  cat > /etc/nginx/conf.d/yuchen-panel.conf <<EOF_NGINX
+render_host_nginx_docker() {
+  cat <<EOF_NGINX
 server {
     listen ${PANEL_PORT};
     server_name _;
@@ -365,6 +414,32 @@ server {
         return 302 /${WEB_BASE_PATH}/;
     }
 
+    # The host cannot resolve Compose DNS. Keep the URI unchanged and let
+    # the frontend container proxy API/sub/share via its container network.
+    location ^~ /api/ {
+        proxy_pass http://127.0.0.1:${WEB_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location ^~ /sub/ {
+        proxy_pass http://127.0.0.1:${WEB_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+    location ^~ /s/ {
+        proxy_pass http://127.0.0.1:${WEB_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
     location /${WEB_BASE_PATH}/ {
         proxy_pass http://127.0.0.1:${WEB_PORT}/${WEB_BASE_PATH}/;
         proxy_http_version 1.1;
@@ -375,19 +450,24 @@ server {
     }
 }
 EOF_NGINX
+}
+
+write_host_nginx_docker() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
+  step "Writing host Nginx reverse proxy"
+  mkdir -p /etc/nginx/conf.d
+  render_host_nginx_docker > /etc/nginx/conf.d/yuchen-panel.conf
   nginx -t
   systemctl enable nginx >/dev/null 2>&1 || true
   systemctl restart nginx
 }
 
-write_host_nginx_fast() {
-  step "Writing host Nginx static panel"
+render_host_nginx_fast() {
   local web_root="$APP_DIR/frontend/dist"
   if [[ ! -f "$web_root/index.html" && -f "$APP_DIR/web/index.html" ]]; then
     web_root="$APP_DIR/web"
   fi
-  mkdir -p /etc/nginx/conf.d
-  cat > /etc/nginx/conf.d/yuchen-panel.conf <<EOF_NGINX
+  cat <<EOF_NGINX
 server {
     listen ${PANEL_PORT};
     server_name _;
@@ -482,17 +562,25 @@ server {
     }
 }
 EOF_NGINX
+}
+
+write_host_nginx_fast() {
+  step "Writing host Nginx static panel"
+  mkdir -p /etc/nginx/conf.d
+  render_host_nginx_fast > /etc/nginx/conf.d/yuchen-panel.conf
   nginx -t
   systemctl enable nginx >/dev/null 2>&1 || true
   systemctl restart nginx
 }
 
 install_cli() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Installing yuchen-panel CLI"
   install -m 0755 "$APP_DIR/scripts/yuchen-panel" /usr/local/bin/yuchen-panel
 }
 
 allow_local_firewall() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow "${PANEL_PORT}/tcp" || true
   fi
@@ -500,6 +588,7 @@ allow_local_firewall() {
 
 
 post_install_self_check() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Post-install self check"
   if command -v yuchen-panel >/dev/null 2>&1; then
     yuchen-panel doctor || true
@@ -508,9 +597,22 @@ post_install_self_check() {
   fi
 }
 
+record_jwt_rotation() {
+  JWT_ROTATED=false
+  if [[ -f "$APP_DIR/.env" ]]; then JWT_ROTATED=true; fi
+}
+
+print_jwt_rotation_notice() {
+  if [[ "$JWT_ROTATED" == "true" ]]; then
+    echo "⚠️ 安全提示：本次安装已轮换 JWT 签名密钥。"
+    echo "   所有已登录用户需要重新登录，管理后台的旧会话将失效。"
+  fi
+}
+
 print_result() {
   echo
   echo "Yuchen Panel installed successfully"
+  print_jwt_rotation_notice
   echo
   echo "Username:    ${ADMIN_USERNAME}"
   echo "Password:    ${ADMIN_PASSWORD_DISPLAY}"
@@ -519,6 +621,10 @@ print_result() {
   echo "InstallMode: ${INSTALL_MODE}"
   echo "Database:    JSON (${APP_DIR}/data/yuchen-panel.json)"
   echo "Access URL:  http://${PUBLIC_IP}:${PANEL_PORT}/${WEB_BASE_PATH}/"
+  echo "⚠️ 当前为 HTTP 明文访问，凭据可被中间人读取。强烈建议立即用 SSH 隧道："
+  echo "  ssh -N -L ${PANEL_PORT}:127.0.0.1:${PANEL_PORT} root@${PUBLIC_IP}"
+  echo "  然后浏览器打开 http://127.0.0.1:${PANEL_PORT}/${WEB_BASE_PATH}/"
+  echo "如已购买域名，可配置 Let's Encrypt 证书启用 HTTPS。远程 Agent 必须使用 HTTPS；本机 loopback 不受影响。"
   echo "API Token:   ${AGENT_SECRET}"
   echo
   echo "Info saved:  ${INFO_FILE}"
@@ -541,7 +647,7 @@ print_result() {
 
 wait_api() {
   step "Waiting for API"
-  for i in $(seq 1 90); do
+  for _ in $(seq 1 90); do
     if curl -fsS "http://127.0.0.1:${API_PORT}/api/health" >/dev/null 2>&1; then
       echo "API is ready."
       return 0
@@ -683,7 +789,11 @@ EOF_SERVICE
 
 start_docker_runtime() {
   step "Starting Docker containers"
-  ${COMPOSE} up -d --build --force-recreate
+  # Real .env is authoritative; exported credentials must not override it.
+  (
+    unset YC_JWT_SECRET YC_ADMIN_USERNAME YC_ADMIN_PASSWORD YC_AGENT_SHARED_SECRET
+    ${COMPOSE} --env-file "$APP_DIR/.env" up -d --build --force-recreate
+  )
 }
 
 main() {
@@ -695,6 +805,7 @@ main() {
     exit 1
   fi
 
+  record_jwt_rotation # Detect the existing runtime .env before rsync/reinstall.
   SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   INSTALL_MODE="$(selected_install_mode)"
   echo "Install mode: ${INSTALL_MODE}"
@@ -705,11 +816,14 @@ main() {
     echo "Docker compatibility mode: no prebuilt fast assets found."
   fi
 
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then
+    if [[ "$INSTALL_MODE" != "docker" || "$(realpath -m "$APP_DIR")" != /tmp/yc-e2e-*/app || "$(realpath -m "$CONFIG_DIR")" != /tmp/yc-e2e-*/config ]]; then
+      echo "ERROR: isolated mode requires disposable /tmp/yc-e2e-*/app and config paths."
+      exit 1
+    fi
+    AUTO_AGENT=false
+  fi
   install_base_deps
-  installer_backup_existing
-  cleanup_old_runtime
-  disable_default_nginx_sites
-
   if [[ "$INSTALL_MODE" == "docker" ]]; then
     install_docker_if_missing
     if ! command -v docker >/dev/null 2>&1; then
@@ -718,8 +832,25 @@ main() {
     fi
     COMPOSE=$(compose_cmd)
     if [[ -z "$COMPOSE" ]]; then
-      echo "ERROR: docker compose plugin or docker-compose is required but was not installed successfully."
+      echo "ERROR: Docker Compose is unavailable; existing runtime was left untouched."
       exit 1
+    fi
+    if ! validate_compose_source; then
+      echo "ERROR: Docker Compose configuration validation failed; existing runtime was left untouched."
+      exit 1
+    fi
+  fi
+  installer_backup_existing
+  cleanup_old_runtime
+  disable_default_nginx_sites
+
+  if [[ "$INSTALL_MODE" == "docker" ]]; then
+    # Docker mode builds the API/frontend images only. The Agent is a host
+    # systemd service and needs a separately supplied Linux binary; silently
+    # attempting a source build on a clean host makes the install fail late.
+    if [[ "$AUTO_AGENT" == "true" ]]; then
+      echo "Docker mode: skipping Agent installation. Deploy yuchen-agent separately before B-tier node connectivity tests."
+      AUTO_AGENT=false
     fi
   fi
 
@@ -794,4 +925,4 @@ main() {
   print_result
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi

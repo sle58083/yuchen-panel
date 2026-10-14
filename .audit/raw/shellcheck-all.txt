@@ -1,0 +1,9 @@
+COMMAND: shellcheck <six scripts>
+
+In deploy/install.sh line 549:
+  for i in $(seq 1 90); do
+  ^-^ SC2034 (warning): i appears unused. Verify use (or export if used externally).
+
+For more information:
+  https://www.shellcheck.net/wiki/SC2034 -- i appears unused. Verify use (or ...
+EXIT_CODE: 1

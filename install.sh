@@ -16,6 +16,7 @@ START_TS="$(date +%s)"
 APT_UPDATED=false
 
 cleanup() {
+  [ -n "${WORK_DIR}" ] && [ -d "${WORK_DIR}" ] || return 0
   rm -rf "${WORK_DIR}"
 }
 trap cleanup EXIT
@@ -75,6 +76,8 @@ install_dependencies() {
   command -v curl >/dev/null 2>&1 || missing+=(curl)
   command -v tar >/dev/null 2>&1 || missing+=(tar)
   command -v gzip >/dev/null 2>&1 || missing+=(gzip)
+  command -v python3 >/dev/null 2>&1 || missing+=(python3)
+  command -v jq >/dev/null 2>&1 || missing+=(jq)
   if [ ! -f /etc/ssl/certs/ca-certificates.crt ]; then
     missing+=(ca-certificates)
   fi
@@ -102,10 +105,44 @@ install_dependencies() {
   die "未找到支持的包管理器，请手动安装 unzip curl ca-certificates tar gzip"
 }
 
+preflight_existing_credentials() {
+  # Treat the existing .env as data; never source privileged configuration.
+  # Refresh weak historical signing keys before deploy stops the API.
+  python3 - /opt/yuchen-panel/.env <<'PY_CREDENTIALS'
+import os, secrets, sys, tempfile
+path = sys.argv[1]
+if not os.path.isfile(path):
+    sys.exit(0)
+with open(path, encoding='utf-8') as f:
+    lines = f.readlines()
+values = [line.partition('=')[2].strip().strip('\"\'') for line in lines
+          if line.startswith('YC_JWT_SECRET=')]
+weak = not values or any(len(value.strip()) < 32 or value in (
+    'dev-secret-change-me', 'change-me-please',
+    'please-change-this-secret-before-public-deploy') for value in values)
+if not weak:
+    sys.exit(0)
+new_lines = [line for line in lines if not line.startswith('YC_JWT_SECRET=')]
+new_lines.append('YC_JWT_SECRET=' + secrets.token_hex(32) + '\n')
+fd, temporary = tempfile.mkstemp(prefix='.jwt-preflight-', dir=os.path.dirname(path))
+try:
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.writelines(new_lines)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+print('Refreshed a weak historical JWT secret; existing login tokens will expire after restart.')
+PY_CREDENTIALS
+}
+
 json_value() {
   local key="$1"
   local file="$2"
-  sed -nE "s/^[[:space:]]*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "${file}" | head -n 1
+  jq -er --arg key "${key}" '.[$key] | select(type == "string" and length > 0)' "${file}"
 }
 
 validate_manifest_field() {
@@ -126,7 +163,7 @@ validate_sha256() {
 fetch_manifest() {
   MANIFEST_FILE="${WORK_DIR}/version.json"
   log "读取版本清单：${MANIFEST_URL}"
-  curl -fL --connect-timeout 10 --retry 3 -o "${MANIFEST_FILE}" "${MANIFEST_URL}" \
+  curl --proto '=https' --proto-redir '=https' -fL --connect-timeout 10 --retry 3 -o "${MANIFEST_FILE}" "${MANIFEST_URL}" \
     || die "无法下载版本清单"
 
   PACKAGE_NAME="$(json_value package "${MANIFEST_FILE}")"
@@ -139,12 +176,24 @@ fetch_manifest() {
   validate_manifest_field "download_url" "${DOWNLOAD_URL}"
   validate_manifest_field "sha256" "${SHA256}"
   validate_sha256 "${SHA256}"
+  validate_install_inputs
+}
+
+validate_install_inputs() {
+  local version_pattern='^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+)*$'
+  local package_pattern='^[A-Za-z0-9._+-]+\.zip$'
+  [[ ${VERSION} =~ ${version_pattern} ]] || die "版本号不符合白名单格式"
+  [[ ${PACKAGE_NAME} =~ ${package_pattern} && ${PACKAGE_NAME} != *..* ]] || die "升级包文件名不安全"
+  [[ ${INSTALL_ROOT} == /* && -n ${INSTALL_ROOT//\//} && ${INSTALL_ROOT} != *..* ]] \
+    || die "安装根目录必须为非根目录的绝对路径，且不能含 .."
+  [[ ${INSTALL_ROOT} != *$'\n'* && ${INSTALL_ROOT} != *$'\r'* ]] || die "安装根目录含控制字符"
+  [[ ${DOWNLOAD_URL} == https://* ]] || die "升级包下载地址必须使用 HTTPS"
 }
 
 download_release() {
   PACKAGE_FILE="${WORK_DIR}/${PACKAGE_NAME}"
   log "下载稳定包：${DOWNLOAD_URL}"
-  curl -fL --connect-timeout 10 --retry 3 -o "${PACKAGE_FILE}" "${DOWNLOAD_URL}" \
+  curl --proto '=https' --proto-redir '=https' -fL --connect-timeout 10 --retry 3 -o "${PACKAGE_FILE}" "${DOWNLOAD_URL}" \
     || die "无法下载稳定包"
 
   log "校验 SHA256"
@@ -153,9 +202,9 @@ download_release() {
 }
 
 extract_release() {
-  RELEASE_ROOT="${INSTALL_ROOT}/${APP_NAME}-${VERSION}"
-  rm -rf "${RELEASE_ROOT}"
-  mkdir -p "${RELEASE_ROOT}"
+  validate_install_inputs
+  mkdir -p "${INSTALL_ROOT}"
+  RELEASE_ROOT="$(mktemp -d "${INSTALL_ROOT}/${APP_NAME}-${VERSION}.XXXXXXXX")"
   log "解压到：${RELEASE_ROOT}"
   unzip -q -o "${PACKAGE_FILE}" -d "${RELEASE_ROOT}"
 
@@ -270,6 +319,7 @@ main() {
   require_root
   detect_os
   install_dependencies
+  preflight_existing_credentials
   fetch_manifest
   download_release
   extract_release
@@ -277,4 +327,6 @@ main() {
   print_finish_info
 }
 
-main "$@"
+if [[ ${BASH_SOURCE[0]:-$0} == "$0" ]]; then
+  main "$@"
+fi

@@ -1,0 +1,4 @@
+COMMAND: compose config without credentials (expected rejection)
+error while interpolating services.yuchen-panel-api.environment.[]: required variable YC_JWT_SECRET is missing a value: Set YC_JWT_SECRET to a random secret of at least 32 characters
+COMMAND: compose config with explicit fixture credentials
+EXIT_CODE: 0

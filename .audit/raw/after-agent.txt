@@ -1,0 +1,24 @@
+COMMAND: go build ./...
+COMMAND: go vet ./...
+COMMAND: go test -race -coverprofile=<output> ./...
+ok  	yuchen-panel/agent/cmd/agent	1.035s	coverage: 12.6% of statements
+COMMAND: go tool cover -func=<profile>
+yuchen-panel/agent/cmd/agent/main.go:67:	main			0.0%
+yuchen-panel/agent/cmd/agent/main.go:122:	syncConfig		0.0%
+yuchen-panel/agent/cmd/agent/main.go:131:	heartbeat		0.0%
+yuchen-panel/agent/cmd/agent/main.go:136:	postJSON		52.2%
+yuchen-panel/agent/cmd/agent/main.go:171:	validatePanelURL	100.0%
+yuchen-panel/agent/cmd/agent/main.go:186:	applyXrayConfig		0.0%
+yuchen-panel/agent/cmd/agent/main.go:221:	collectHeartbeat	0.0%
+yuchen-panel/agent/cmd/agent/main.go:229:	runShell		0.0%
+yuchen-panel/agent/cmd/agent/main.go:235:	xrayVersion		0.0%
+yuchen-panel/agent/cmd/agent/main.go:243:	fileHash		0.0%
+yuchen-panel/agent/cmd/agent/main.go:252:	loadAverage		0.0%
+yuchen-panel/agent/cmd/agent/main.go:265:	memoryUsage		0.0%
+yuchen-panel/agent/cmd/agent/main.go:286:	diskUsage		0.0%
+yuchen-panel/agent/cmd/agent/main.go:299:	networkTotals		0.0%
+yuchen-panel/agent/cmd/agent/main.go:326:	round2			0.0%
+yuchen-panel/agent/cmd/agent/main.go:327:	getenv			0.0%
+yuchen-panel/agent/cmd/agent/main.go:333:	getenvInt		0.0%
+yuchen-panel/agent/cmd/agent/main.go:341:	getenvBool		0.0%
+total:						(statements)		12.6%

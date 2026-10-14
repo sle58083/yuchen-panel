@@ -20,17 +20,6 @@ func (r *Router) nodes(w http.ResponseWriter, req *http.Request) {
 		_ = r.store.EnsureSingleModeLocalServerLocked()
 		list := make([]model.Node, 0, len(r.store.Data.Nodes))
 		for _, item := range r.store.Data.Nodes {
-			// Shadowsocks 入站把凭据回填到响应里（旧数据为空时按确定性规则补全），
-			// 保证前端编辑表单和 ss:// 分享链接与 Xray 服务端配置一致。
-			if strings.EqualFold(strings.TrimSpace(item.Protocol), "shadowsocks") {
-				method, password := xray.SSCredentials(item)
-				if strings.TrimSpace(item.SSMethod) == "" {
-					item.SSMethod = method
-				}
-				if strings.TrimSpace(item.SSPassword) == "" {
-					item.SSPassword = password
-				}
-			}
 			list = append(list, item)
 		}
 		writeJSON(w, http.StatusOK, list)
@@ -49,15 +38,6 @@ func (r *Router) nodes(w http.ResponseWriter, req *http.Request) {
 		now := time.Now()
 		body.ID = store.NewID("node")
 		body.Enabled = true
-		// Shadowsocks 入站创建时生成默认凭据（method 缺省 aes-256-gcm）。
-		if strings.EqualFold(strings.TrimSpace(body.Protocol), "shadowsocks") {
-			if strings.TrimSpace(body.SSMethod) == "" {
-				body.SSMethod = "aes-256-gcm"
-			}
-			if strings.TrimSpace(body.SSPassword) == "" {
-				body.SSPassword = store.NewPassword()
-			}
-		}
 		body.CreatedAt = now
 		body.UpdatedAt = now
 		r.store.Data.Nodes[body.ID] = body
@@ -120,21 +100,14 @@ func (r *Router) nodeByID(w http.ResponseWriter, req *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}
+		// An omitted security field during update means “keep the stored choice”.
+		// This preserves legacy nodes that explicitly chose none.
+		if strings.TrimSpace(body.Security) == "" {
+			body.Security = item.Security
+		}
 		if err := r.normalizeNodeLocked(&body, id); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
-		}
-		// Shadowsocks 入站编辑时未填密码则保留原密码，避免误触发凭据轮换。
-		if strings.EqualFold(strings.TrimSpace(body.Protocol), "shadowsocks") {
-			if strings.TrimSpace(body.SSMethod) == "" {
-				body.SSMethod = item.SSMethod
-			}
-			if strings.TrimSpace(body.SSPassword) == "" {
-				body.SSPassword = item.SSPassword
-			}
-			if strings.TrimSpace(body.SSPassword) == "" {
-				body.SSPassword = store.NewPassword()
-			}
 		}
 		body.ID = id
 		body.CreatedAt = item.CreatedAt
@@ -152,6 +125,9 @@ func (r *Router) nodeByID(w http.ResponseWriter, req *http.Request) {
 				if nid != id {
 					next = append(next, nid)
 				}
+			}
+			if len(next) != len(c.NodeIDs) && len(next) == 0 && len(c.RelayRouteIDs) == 0 {
+				c.Enabled = false
 			}
 			c.NodeIDs = next
 			r.store.Data.Clients[cid] = c
@@ -227,18 +203,22 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		n.Transport = "tcp"
 	}
 	if n.Security == "" {
-		n.Security = "none"
-	}
-	// 协议与安全方式/传输方式的兼容性约束：
-	// Shadowsocks 自带加密，Reality/TLS 不适用，传输强制 tcp；VMess 不支持 Reality。
-	switch n.Protocol {
-	case "shadowsocks":
-		n.Transport = "tcp"
-		n.Security = "none"
-	case "vmess":
-		if n.Security == "reality" {
+		switch n.Protocol {
+		case "trojan":
+			n.Security = "tls"
+		case "vless":
+			// Task 9: user confirmed mainly mainland clients; anti-blocking default.
+			n.Security = "reality"
+		default:
 			n.Security = "none"
 		}
+	}
+	n.Protocol = strings.ToLower(strings.TrimSpace(n.Protocol))
+	if n.Protocol == "shadowsocks" {
+		return fmt.Errorf("面板已停用 Shadowsocks 节点，请改用 VLESS/Reality")
+	}
+	if n.Protocol == "vmess" && n.Security == "reality" {
+		n.Security = "none"
 	}
 	if n.Host == "" {
 		if srv.Host != "" {
@@ -247,7 +227,7 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 			n.Host = srv.IP
 		}
 	}
-	if n.SNI == "" && n.Security != "none" {
+	if n.SNI == "" && n.Security != "none" && n.Security != "reality" {
 		n.SNI = n.Host
 	}
 	if n.Path == "" && n.Transport == "ws" {
@@ -322,7 +302,7 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		}
 	}
 	switch n.Protocol {
-	case "vless", "vmess", "trojan", "shadowsocks", "socks":
+	case "vless", "vmess", "trojan", "socks":
 	default:
 		return fmt.Errorf("暂不支持的协议：%s", n.Protocol)
 	}

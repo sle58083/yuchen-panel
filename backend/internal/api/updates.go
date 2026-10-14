@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,11 +126,16 @@ func (r *Router) updatePanelCommand(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	dir := strings.TrimSuffix(pkg, ".zip")
+	values, err := shellEscapeValues(pkg, manifest.DownloadURL, dir, manifest.SHA256+"  "+pkg)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
 	shaLine := ""
 	if strings.TrimSpace(manifest.SHA256) != "" {
-		shaLine = fmt.Sprintf("echo '%s  %s' | sha256sum -c - && \\\n", shellQuoteSafe(manifest.SHA256), shellQuoteSafe(pkg))
+		shaLine = fmt.Sprintf("printf '%%s\\n' %s | sha256sum -c - && ", values[3])
 	}
-	command := fmt.Sprintf("cd /root && \\\nmkdir -p /root/yuchen-panel-upgrades && \\\ncd /root/yuchen-panel-upgrades && \\\ncurl -L --fail -o %s %s && \\\n%sunzip -o %s && \\\ncd %s && \\\nbash deploy/install.sh 2>&1 | tee /root/yuchen-panel-upgrade.log", shellEscape(pkg), shellEscape(manifest.DownloadURL), shaLine, shellEscape(pkg), shellEscape(dir))
+	command := fmt.Sprintf("cd /root && mkdir -p /root/yuchen-panel-upgrades && cd /root/yuchen-panel-upgrades && curl --proto '=https' --proto-redir '=https' -L --fail -o %s %s && %sunzip -o %s && cd %s && bash deploy/install.sh 2>&1 | tee /root/yuchen-panel-upgrade.log", values[0], values[1], shaLine, values[0], values[2])
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":              true,
 		"current_version": panelVersion,
@@ -152,19 +158,24 @@ func (r *Router) updateXrayStatus(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func fetchUpdateManifest(ctx context.Context, url string) (updateManifest, error) {
+func fetchUpdateManifest(ctx context.Context, manifestURL string) (updateManifest, error) {
 	var manifest updateManifest
-	if url == "" {
+	if manifestURL == "" {
 		return manifest, fmt.Errorf("manifest url is empty")
+	}
+	origin, err := url.Parse(manifestURL)
+	if err != nil || origin.Scheme != "https" || origin.Hostname() == "" || origin.User != nil {
+		return manifest, fmt.Errorf("manifest URL must use HTTPS without userinfo")
 	}
 	cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(cctx, http.MethodGet, manifestURL, nil)
 	if err != nil {
 		return manifest, err
 	}
 	req.Header.Set("User-Agent", "Yuchen-Panel/"+panelVersion)
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: manifestRedirectPolicy(origin)}
+	resp, err := client.Do(req)
 	if err != nil {
 		return manifest, err
 	}
@@ -220,6 +231,12 @@ func isRemoteVersionNewer(remote, current string) bool {
 }
 
 func comparePanelVersions(a, b string) int {
+	av, aok := parseSemanticVersion(a)
+	bv, bok := parseSemanticVersion(b)
+	if aok && bok {
+		return compareSemanticVersion(av, bv)
+	}
+	// Retain numeric compatibility only for historical four/five-part release IDs.
 	ap := numericVersionParts(a)
 	bp := numericVersionParts(b)
 	max := len(ap)
@@ -280,8 +297,34 @@ func numericVersionParts(s string) []int {
 	return out
 }
 
-func shellEscape(s string) string    { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
-func shellQuoteSafe(s string) string { return strings.ReplaceAll(s, "'", "") }
+// shellEscape encodes a Bash literal. Control characters are rejected before writing a script.
+func shellEscape(s string) (string, error) {
+	if strings.ContainsAny(s, "\n\r\x00") {
+		return "", fmt.Errorf("shell literal contains a forbidden control character")
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'", nil
+}
+
+func shellEscapeValues(values ...string) ([]any, error) {
+	escaped := make([]any, len(values))
+	for i, value := range values {
+		enc, err := shellEscape(value)
+		if err != nil {
+			return nil, fmt.Errorf("unsafe manifest field %d: %w", i, err)
+		}
+		escaped[i] = enc
+	}
+	return escaped, nil
+}
+
+func manifestRedirectPolicy(origin *url.URL) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) > 5 || req.URL.Scheme != "https" || req.URL.User != nil || !strings.EqualFold(req.URL.Host, origin.Host) {
+			return fmt.Errorf("manifest redirect must stay on the original HTTPS host, maximum five hops")
+		}
+		return nil
+	}
+}
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {

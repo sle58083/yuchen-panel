@@ -1,0 +1,6 @@
+=== RUN   TestMemoryCapacityReusesUsageRead
+--- PASS: TestMemoryCapacityReusesUsageRead (0.00s)
+=== RUN   TestHeartbeatReportsSpecs
+--- PASS: TestHeartbeatReportsSpecs (0.22s)
+PASS
+ok  	yuchen-panel/agent/cmd/agent	0.233s

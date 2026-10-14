@@ -1,0 +1,2 @@
+COMMAND: docker pull ghcr.io/sagernet/sing-box:1.14.2
+Error response from daemon: failed to resolve reference "ghcr.io/sagernet/sing-box:1.14.2": ghcr.io/sagernet/sing-box:1.14.2: not found

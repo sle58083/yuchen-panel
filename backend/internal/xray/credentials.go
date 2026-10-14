@@ -19,19 +19,3 @@ func TrojanClientPassword(c model.Client) string {
 	sum := sha256.Sum256([]byte("trojan-" + c.ID))
 	return hex.EncodeToString(sum[:])[:16]
 }
-
-// SSCredentials 返回 Shadowsocks 入站的 method 和 password。
-// Xray 的 SS 入站是单用户凭据（settings.method + settings.password），
-// 因此凭据保存在入站上而不是每个客户上。
-func SSCredentials(n model.Node) (string, string) {
-	method := strings.TrimSpace(n.SSMethod)
-	if method == "" {
-		method = "aes-256-gcm"
-	}
-	password := strings.TrimSpace(n.SSPassword)
-	if password == "" {
-		sum := sha256.Sum256([]byte("ss-" + n.ID))
-		password = hex.EncodeToString(sum[:])[:16]
-	}
-	return method, password
-}

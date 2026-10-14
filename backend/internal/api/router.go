@@ -22,7 +22,11 @@ type ctxKey string
 const claimsKey ctxKey = "claims"
 
 func NewRouter(s *store.Store) http.Handler {
-	r := &Router{store: s, jwtSecret: getenv("YC_JWT_SECRET", "dev-secret-change-me"), agentSecret: getenv("YC_AGENT_SHARED_SECRET", "change-agent-secret")}
+	secret := os.Getenv("YC_JWT_SECRET")
+	if len(strings.TrimSpace(secret)) < 32 || secret == "dev-secret-change-me" || secret == "change-me-please" || secret == "please-change-this-secret-before-public-deploy" {
+		panic("YC_JWT_SECRET must be an explicit secret of at least 32 characters; public placeholders are forbidden")
+	}
+	r := &Router{store: s, jwtSecret: secret, agentSecret: getenv("YC_AGENT_SHARED_SECRET", "change-agent-secret")}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", r.health)
 	mux.HandleFunc("/api/auth/login", r.login)
@@ -75,6 +79,14 @@ func (r *Router) withAuth(fn http.HandlerFunc) http.HandlerFunc {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
 			return
 		}
+		r.store.Mu.RLock()
+		account, exists := r.store.Data.Admins[claims.Sub]
+		r.store.Mu.RUnlock()
+		if !exists || !account.Enabled || account.Role != "super_admin" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "account is unavailable or unauthorized"})
+			return
+		}
+		claims.Username, claims.Role = account.Username, account.Role
 		ctx := context.WithValue(req.Context(), claimsKey, claims)
 		fn(w, req.WithContext(ctx))
 	}

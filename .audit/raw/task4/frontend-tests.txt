@@ -1,0 +1,17 @@
+✔ special password and IPv6 URI round-trip preserves endpoint and name (3.5204ms)
+✔ display names carry a reversible short node id (4.978ms)
+✔ display names do not vary with client username (0.5853ms)
+✔ VMess network and default WS/gRPC transport parameters survive export (5.0472ms)
+✔ sing-box DNS is modern, selector choices valid, tags unique even when empty (0.6931ms)
+✔ subscription format URLs are explicit and token path is encoded (0.4119ms)
+✔ optional VPN profile includes IPv4/IPv6 TUN, DNS hijack and loop prevention (0.5298ms)
+✔ empty, disabled, expired and fixed-exit clients have no ordinary node grant (2.8002ms)
+✔ retired protocols cannot be shared in any format (1.4007ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 563.199798

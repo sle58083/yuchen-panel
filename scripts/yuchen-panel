@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_DIR="/etc/yuchen-panel"
+CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}
 PANEL_INFO="${CONFIG_DIR}/panel.info"
-APP_DIR="/opt/yuchen-panel"
+APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 
 get_info() {
   local key="$1"
   if [[ -f "$PANEL_INFO" ]]; then
     grep -E "^${key}=" "$PANEL_INFO" | head -n1 | cut -d= -f2- || true
+  fi
+}
+
+get_env() {
+  if [[ -f "$APP_DIR/.env" ]]; then
+    awk -F= -v key="$1" '$1==key {sub(/^[^=]*=/, ""); print; exit}' "$APP_DIR/.env"
   fi
 }
 
@@ -49,6 +55,8 @@ status_line() {
   local detail="${3:-}"
   if [[ "$state" == "ok" ]]; then
     printf "[OK]   %s" "$label"
+  elif [[ "$state" == "skip" ]]; then
+    printf "[SKIP] %s" "$label"
   elif [[ "$state" == "warn" ]]; then
     printf "[WARN] %s" "$label"
   else
@@ -361,6 +369,7 @@ PY
   doctor)
     FAILS=0
     WARNS=0
+    SKIPS=0
     echo "Yuchen Panel Doctor"
     echo "=============================="
 
@@ -384,13 +393,32 @@ PY
     echo
 
     for unit in yuchen-panel-api yuchen-agent xray nginx; do
-      if ! service_check "$unit"; then
+      if [[ "$MODE" == "docker" && "$unit" == "yuchen-panel-api" ]]; then
+        status_line "$unit (systemd)" skip "docker mode uses the API container"
+        SKIPS=$((SKIPS+1))
+        COMPOSE=$(compose_cmd)
+        API_CONTAINER=""
+        if [[ -n "$COMPOSE" && -f "$APP_DIR/docker-compose.yml" ]]; then
+          API_CONTAINER=$(cd "$APP_DIR" && $COMPOSE ps -q yuchen-panel-api 2>/dev/null || true)
+        fi
+        if [[ -n "$API_CONTAINER" ]] && [[ $(docker inspect --format '{{.State.Status}}' "$API_CONTAINER" 2>/dev/null || true) == running ]]; then
+          status_line "API container" ok "running"
+        else
+          status_line "API container" fail "missing or not running"
+          FAILS=$((FAILS+1))
+        fi
+      elif [[ "$MODE" == "docker" && ! -f "$CONFIG_DIR/agent.env" && ( "$unit" == "yuchen-agent" || "$unit" == "xray" ) ]]; then
+        status_line "$unit" skip "docker mode does not include Agent; deploy separately for node connectivity"
+        SKIPS=$((SKIPS+1))
+      elif ! service_check "$unit"; then
         FAILS=$((FAILS+1))
       fi
     done
+    API_PORT=$(get_env API_PORT)
+    API_PORT=${API_PORT:-8088}
 
-    if command -v curl >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8088/api/health >/dev/null 2>&1; then
-      status_line "API health" ok "http://127.0.0.1:8088/api/health"
+    if command -v curl >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:${API_PORT}/api/health" >/dev/null 2>&1; then
+      status_line "API health" ok "http://127.0.0.1:${API_PORT}/api/health"
     else
       status_line "API health" fail "local API is not responding"
       FAILS=$((FAILS+1))
@@ -410,8 +438,11 @@ PY
       FAILS=$((FAILS+1))
     fi
 
-    if [[ -f /etc/yuchen-panel/xray/config.json ]]; then
-      status_line "Xray config" ok "/etc/yuchen-panel/xray/config.json"
+    if [[ "$MODE" == "docker" && ! -f "$CONFIG_DIR/agent.env" ]]; then
+      status_line "Xray config" skip "no Agent deployed in docker mode"
+      SKIPS=$((SKIPS+1))
+    elif [[ -f "$CONFIG_DIR/xray/config.json" ]]; then
+      status_line "Xray config" ok "$CONFIG_DIR/xray/config.json"
     else
       status_line "Xray config" warn "missing; create an inbound/client to generate it"
       WARNS=$((WARNS+1))
@@ -446,6 +477,10 @@ PY
       FAILS=$((FAILS+1))
     fi
 
+    if [[ "$MODE" == "docker" && ! -f "$CONFIG_DIR/agent.env" ]]; then
+      status_line "Xray restart watch" skip "no Agent/Xray integration configured"
+      SKIPS=$((SKIPS+1))
+    else
     RESTART_LINES=$(recent_xray_restart_count || echo 0)
     if [[ "${RESTART_LINES:-0}" -gt 8 ]]; then
       status_line "Xray restart watch" warn "recent restart/config lines in 3 minutes: ${RESTART_LINES}"
@@ -454,12 +489,14 @@ PY
       status_line "Xray restart watch" ok "no abnormal restart loop detected"
     fi
 
+    fi
+
     echo
     if [[ "$FAILS" -eq 0 ]]; then
-      echo "Doctor result: PASS (${WARNS} warning(s))"
+      echo "Doctor result: PASS (${WARNS} warning(s), ${SKIPS} skipped)"
       exit 0
     fi
-    echo "Doctor result: FAIL (${FAILS} failure(s), ${WARNS} warning(s))"
+    echo "Doctor result: FAIL (${FAILS} failure(s), ${WARNS} warning(s), ${SKIPS} skipped)"
     echo "Tip: run 'yuchen-panel logs' or 'journalctl -u yuchen-panel-api -u yuchen-agent -u xray -u nginx -n 120 --no-pager'."
     exit 1
     ;;

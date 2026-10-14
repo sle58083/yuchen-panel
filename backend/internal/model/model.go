@@ -15,6 +15,8 @@ type AdminUser struct {
 }
 
 type Server struct {
+	CPUCores        int       `json:"cpu_cores,omitempty"`
+	MemTotalBytes   int64     `json:"memory_total_bytes,omitempty"`
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
 	IP              string    `json:"ip"`
@@ -167,6 +169,8 @@ type OperationLog struct {
 }
 
 type AgentHeartbeat struct {
+	CPUCores      int     `json:"cpu_cores,omitempty"`
+	MemTotalBytes int64   `json:"memory_total_bytes,omitempty"`
 	ServerID      string  `json:"server_id"`
 	Hostname      string  `json:"hostname"`
 	AgentVersion  string  `json:"agent_version"`
