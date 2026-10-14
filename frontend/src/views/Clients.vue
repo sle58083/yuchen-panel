@@ -343,7 +343,14 @@ async function refreshUsage() {
   polling = true
   try {
     const latest = await api('/api/clients')
-    if (active && !showAdvancedClientForm.value && !showFixedClientModal.value) clients.value = latest
+    if (active && !showAdvancedClientForm.value && !showFixedClientModal.value) {
+      clients.value = latest
+      if (detailClient.value) detailClient.value = latest.find((c:any) => c.id === detailClient.value.id) || null
+      if (shareClient.value) {
+        shareClient.value = latest.find((c:any) => c.id === shareClient.value.id) || null
+        if (shareClient.value) rebuildClientShare()
+      }
+    }
   } catch { /* Keep the last successful sample; do not interrupt editing. */ }
   finally { polling = false }
 }

@@ -5,11 +5,11 @@ import vm from 'node:vm'
 
 // Exercise the actual timer/lifecycle block in Clients.vue without a DOM.
 const source=fs.readFileSync('src/views/Clients.vue','utf8')
-const block=source.slice(source.indexOf('let refreshTimer:'),source.indexOf('</script>')).replace(': ReturnType<typeof setInterval> | undefined','')
+const block=source.slice(source.indexOf('let refreshTimer:'),source.indexOf('</script>')).replace(': ReturnType<typeof setInterval> | undefined','').replaceAll('c:any','c')
 
 test('Traffic polling uses 30 seconds, pauses during editing, rejects late responses, and cleans up',async()=>{
  let interval,unmount,cleared=0,calls=0,loads=0,resolve
- const context={showAdvancedClientForm:{value:false},showFixedClientModal:{value:false},clients:{value:['original']},load:()=>{loads++},onMounted:fn=>fn(),onBeforeUnmount:fn=>{unmount=fn},setInterval:(fn,ms)=>{assert.equal(ms,30000);interval=fn;return 7},clearInterval:id=>{assert.equal(id,7);cleared++},api:()=>{calls++;return new Promise(r=>{resolve=r})}}
+ const context={detailClient:{value:null},shareClient:{value:null},rebuildClientShare:()=>{},showAdvancedClientForm:{value:false},showFixedClientModal:{value:false},clients:{value:['original']},load:()=>{loads++},onMounted:fn=>fn(),onBeforeUnmount:fn=>{unmount=fn},setInterval:(fn,ms)=>{assert.equal(ms,30000);interval=fn;return 7},clearInterval:id=>{assert.equal(id,7);cleared++},api:()=>{calls++;return new Promise(r=>{resolve=r})}}
  vm.runInNewContext(block,context)
  assert.equal(loads,1)
  context.showAdvancedClientForm.value=true;await interval();assert.equal(calls,0)
