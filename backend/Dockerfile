@@ -5,6 +5,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/ ./backend/
 COPY install.sh ./install.sh
+COPY VERSION ./VERSION
 WORKDIR /src/backend
 RUN env PATH=/usr/local/go/bin:/bin /usr/local/go/bin/go test -run '^TestSubscriptionFormatRouting$' ./internal/api
 RUN go test -v ./... && go build -o /out/yuchen-panel-api ./cmd/server

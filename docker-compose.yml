@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: yuchen-panel-api
+    container_name: ${YC_API_CONTAINER_NAME:-yuchen-panel-api}
     ports:
       - "127.0.0.1:${API_PORT:-8088}:8088"
     environment:
@@ -28,7 +28,7 @@ services:
       context: ./frontend
       args:
         VITE_BASE_PATH: "/${WEB_BASE_PATH:-yuchen}/"
-    container_name: yuchen-panel-frontend
+    container_name: ${YC_WEB_CONTAINER_NAME:-yuchen-panel-frontend}
     ports:
       - "127.0.0.1:${WEB_PORT:-5173}:5173"
     depends_on:

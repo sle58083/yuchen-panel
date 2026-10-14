@@ -3,6 +3,7 @@ set -euo pipefail
 
 VERSION="$(cut -d- -f1 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION" 2>/dev/null || echo 1.0.2)"
 CHANNEL="$(cut -s -d- -f2- "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/VERSION")"
+# APP_DIR owns runtime files and the real .env; SRC_DIR owns source/build files.
 APP_DIR=${APP_DIR:-/opt/yuchen-panel}
 CONFIG_DIR=${CONFIG_DIR:-/etc/yuchen-panel}
 INFO_FILE="$CONFIG_DIR/panel.info"
@@ -16,6 +17,7 @@ SETUP_XRAY_SERVICE=${SETUP_XRAY_SERVICE:-true}
 YC_FORCE_INSTALL_XRAY=${YC_FORCE_INSTALL_XRAY:-0}
 YC_SKIP_XRAY_INSTALL=${YC_SKIP_XRAY_INSTALL:-0}
 FRESH_INSTALL=${FRESH_INSTALL:-false}
+YC_DOCKER_ISOLATED=${YC_DOCKER_ISOLATED:-0}
 YC_INSTALL_MODE=${YC_INSTALL_MODE:-auto}   # auto | fast | docker
 
 export DEBIAN_FRONTEND=noninteractive
@@ -24,7 +26,7 @@ export NEEDRESTART_SUSPEND=1
 
 APT_UPDATED=false
 START_TS="$(date +%s)"
-SRC_DIR=""
+SRC_DIR="" # Source/clone directory: never assume it contains runtime credentials.
 PUBLIC_IP=""
 LOCAL_HOST=""
 COMPOSE=""
@@ -154,7 +156,7 @@ install_base_deps() {
   need_cmd jq || missing+=(jq)
   need_cmd rsync || missing+=(rsync)
   need_cmd ss || missing+=(iproute2)
-  need_cmd nginx || missing+=(nginx)
+  if [[ "$YC_DOCKER_ISOLATED" != "1" ]]; then need_cmd nginx || missing+=(nginx); fi
   need_cmd unzip || missing+=(unzip)
   [[ -f /etc/ssl/certs/ca-certificates.crt ]] || missing+=(ca-certificates)
 
@@ -214,8 +216,10 @@ install_docker_if_missing() {
     echo "Docker already installed: $(docker --version 2>/dev/null || true)"
   fi
 
-  systemctl enable docker >/dev/null 2>&1 || true
-  systemctl start docker >/dev/null 2>&1 || true
+  if [[ "$YC_DOCKER_ISOLATED" != "1" ]]; then
+    systemctl enable docker >/dev/null 2>&1 || true
+    systemctl start docker >/dev/null 2>&1 || true
+  fi
 
   if docker compose version >/dev/null 2>&1; then
     echo "Docker Compose v2 available: $(docker compose version 2>/dev/null || true)"
@@ -225,22 +229,61 @@ install_docker_if_missing() {
     echo "Docker Compose v1 is unsupported; installing the v2 plugin before touching existing services."
   fi
 
-  echo "Docker Compose not found, installing compose package..."
+  echo "Docker Compose v2 not found, trying distribution packages..."
   if command -v apt-get >/dev/null 2>&1; then
     apt_update_once
-    if apt-get install -y docker-compose-plugin; then
-      echo "Docker Compose plugin installed."
-    else
-      echo "ERROR: Docker Compose v2 plugin unavailable. Install the v2 plugin; existing runtime was left untouched."
-      return 1
-    fi
+    for pkg in docker-compose-v2 docker-compose-plugin docker-compose; do
+      # Avoid apt's missing-package error; the candidate may not exist in these sources.
+      apt-cache show "$pkg" >/dev/null 2>&1 || continue
+      if apt-get install -y "$pkg" && docker compose version >/dev/null 2>&1; then
+        echo "Docker Compose v2 installed via $pkg."
+        return 0
+      fi
+    done
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y docker-compose-plugin
+    for pkg in docker-compose-plugin docker-compose; do
+      if yum install -y "$pkg" && docker compose version >/dev/null 2>&1; then return 0; fi
+    done
   fi
+  compose_install_guidance
+  return 1
 }
 
 
+
+compose_install_guidance() {
+  cat >&2 <<'GUIDE'
+ERROR: Docker Compose v2 unavailable; existing runtime was left untouched.
+Ubuntu/Debian distribution sources: sudo apt-get update && sudo apt-get install -y docker-compose-v2
+Docker official repository setup:
+  https://docs.docker.com/engine/install/ubuntu/#install-using-the-apt-repository
+  https://docs.docker.com/engine/install/debian/#install-using-the-apt-repository
+After configuring that repository: sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+RHEL/CentOS repository setup: https://docs.docker.com/engine/install/centos/#install-using-the-rpm-repository
+After configuring that repository: sudo yum install -y docker-compose-plugin
+Verify before retrying: docker compose version
+GUIDE
+}
+
+validate_compose_source() {
+  # The source Compose file defines builds; APP_DIR/.env supplies runtime values.
+  # Fresh-install placeholders live only in this subshell, never in the parent.
+  (
+    cd "$SRC_DIR"
+    if [[ -f "$APP_DIR/.env" ]]; then
+      unset YC_JWT_SECRET YC_ADMIN_USERNAME YC_ADMIN_PASSWORD
+      ${COMPOSE} --env-file "$APP_DIR/.env" -f "$SRC_DIR/docker-compose.yml" config >/dev/null
+    else
+      YC_JWT_SECRET=validation-only-placeholder-32-characters \
+      YC_ADMIN_USERNAME=validation-only \
+      YC_ADMIN_PASSWORD=validation-only-password \
+      ${COMPOSE} -f "$SRC_DIR/docker-compose.yml" config >/dev/null
+    fi
+  )
+}
+
 installer_backup_existing() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Pre-install backup"
   local has_existing="false"
   for item in \
@@ -314,6 +357,7 @@ EOF_META
 }
 
 cleanup_old_runtime() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Cleaning old Yuchen Panel runtime"
   systemctl stop yuchen-panel-api 2>/dev/null || true
   systemctl stop yuchen-agent 2>/dev/null || true
@@ -325,6 +369,7 @@ cleanup_old_runtime() {
 }
 
 disable_default_nginx_sites() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Disabling default Nginx 80 site"
   rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
   rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
@@ -354,6 +399,7 @@ EOF_INFO
 }
 
 write_host_nginx_docker() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Writing host Nginx reverse proxy"
   mkdir -p /etc/nginx/conf.d
   cat > /etc/nginx/conf.d/yuchen-panel.conf <<EOF_NGINX
@@ -490,11 +536,13 @@ EOF_NGINX
 }
 
 install_cli() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Installing yuchen-panel CLI"
   install -m 0755 "$APP_DIR/scripts/yuchen-panel" /usr/local/bin/yuchen-panel
 }
 
 allow_local_firewall() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow "${PANEL_PORT}/tcp" || true
   fi
@@ -502,6 +550,7 @@ allow_local_firewall() {
 
 
 post_install_self_check() {
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then return 0; fi
   step "Post-install self check"
   if command -v yuchen-panel >/dev/null 2>&1; then
     yuchen-panel doctor || true
@@ -689,7 +738,11 @@ EOF_SERVICE
 
 start_docker_runtime() {
   step "Starting Docker containers"
-  ${COMPOSE} up -d --build --force-recreate
+  # Real .env is authoritative; exported credentials must not override it.
+  (
+    unset YC_JWT_SECRET YC_ADMIN_USERNAME YC_ADMIN_PASSWORD YC_AGENT_SHARED_SECRET
+    ${COMPOSE} --env-file "$APP_DIR/.env" up -d --build --force-recreate
+  )
 }
 
 main() {
@@ -711,6 +764,13 @@ main() {
     echo "Docker compatibility mode: no prebuilt fast assets found."
   fi
 
+  if [[ "$YC_DOCKER_ISOLATED" == "1" ]]; then
+    if [[ "$INSTALL_MODE" != "docker" || "$(realpath -m "$APP_DIR")" != /tmp/yc-e2e-*/app || "$(realpath -m "$CONFIG_DIR")" != /tmp/yc-e2e-*/config ]]; then
+      echo "ERROR: isolated mode requires disposable /tmp/yc-e2e-*/app and config paths."
+      exit 1
+    fi
+    AUTO_AGENT=false
+  fi
   install_base_deps
   if [[ "$INSTALL_MODE" == "docker" ]]; then
     install_docker_if_missing
@@ -723,7 +783,7 @@ main() {
       echo "ERROR: Docker Compose is unavailable; existing runtime was left untouched."
       exit 1
     fi
-    if ! (cd "$SRC_DIR" && ${COMPOSE} config >/dev/null 2>&1); then
+    if ! validate_compose_source; then
       echo "ERROR: Docker Compose configuration validation failed; existing runtime was left untouched."
       exit 1
     fi
@@ -813,4 +873,4 @@ main() {
   print_result
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
