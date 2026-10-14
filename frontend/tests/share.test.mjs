@@ -17,20 +17,21 @@ test('special password and IPv6 URI round-trip preserves endpoint and name',()=>
  const parsed=new URL(share.buildTrojanLink(ipv6,client))
  assert.equal(parsed.hostname,'[2001:db8::1]')
  assert.equal(decodeURIComponent(parsed.username),client.password)
- assert.equal(decodeURIComponent(parsed.hash.slice(1)),`${ipv6.name} #${ipv6.id}`)
+ assert.equal(decodeURIComponent(parsed.hash.slice(1)),ipv6.name)
  assert.equal(new URL(share.buildVlessLink({...ipv6,protocol:'vless'},client)).hostname,'[2001:db8::1]')
 })
 
-test('display names carry a reversible short node id',()=>{
+test('display names use numeric duplicate suffixes without short ids',()=>{
  const client={uuid:'f9b77af1-736a-4f5b-8bc5-273ba9b552ea'}
  const nodes=Array.from({length:12},(_,i)=>({...node,id:`node-${i.toString().padStart(2,'0')}`,name:'重复名称'}))
  const config=JSON.parse(share.buildSingBoxConfig(nodes,client))
  const tags=config.outbounds.filter(o=>o.type!=='selector'&&o.type!=='direct').map(o=>o.tag)
  assert.equal(new Set(tags).size,12)
- nodes.forEach(n=>assert.equal(tags.some(tag=>tag.endsWith(`#${n.id.replace(/[^A-Za-z0-9]/g,'').slice(-4)}`)),true))
+ assert.deepEqual(tags,nodes.map((_,i)=>i===0?'重复名称':`重复名称 ${i+1}`))
  const yaml=share.buildClashMetaConfig(nodes,client)
  const names=[...yaml.matchAll(/^  - name: "([^"]+)"$/gm)].map(m=>m[1])
  assert.equal(new Set(names).size,12)
+ assert.deepEqual(names,tags)
 })
 
 test('display names do not vary with client username',()=>{
@@ -38,10 +39,41 @@ test('display names do not vary with client username',()=>{
  const first=JSON.parse(share.buildSingBoxConfig([sample],{uuid:'a',username:'alice'}))
  const second=JSON.parse(share.buildSingBoxConfig([sample],{uuid:'b',username:'bob'}))
  const tag=config=>config.outbounds.find(out=>out.type==='vless')?.tag
- assert.equal(tag(first), '重复名称 #de00')
+ assert.equal(tag(first), '重复名称')
  assert.equal(tag(first), tag(second))
  assert.equal(tag(first).includes('alice'), false)
  assert.equal(tag(first).includes('bob'), false)
+})
+
+test('clean original names and numeric duplicates agree across all four export paths',()=>{
+ const client={uuid:'f9b77af1-736a-4f5b-8bc5-273ba9b552ea',password:'fixture-password'}
+ for(const [input,want] of [
+  [['美国','日本','韩国'],['美国','日本','韩国']],
+  [['美国','美国','美国'],['美国','美国 2','美国 3']],
+  [[' 美国 ','','   '],['美国','example.com:23456','example.com:23456 2']],
+ ]) {
+  const nodes=input.map((name,i)=>({...node,id:`node-${i}`,name}))
+  const snapshot=JSON.stringify(nodes)
+  const tags=JSON.parse(share.buildSingBoxConfig(nodes,client)).outbounds.filter(o=>o.type==='vless').map(o=>o.tag)
+  const names=[...share.buildClashMetaConfig(nodes,client).matchAll(/^  - name: "([^"]+)"$/gm)].map(m=>m[1])
+  const fragments=share.buildClientMultiShare(nodes,client,'v2rayn').split('\n').map(link=>decodeURIComponent(new URL(link).hash.slice(1)))
+  const ps=share.buildClientMultiShare(nodes.map(n=>({...n,protocol:'vmess'})),client,'v2rayn').split('\n').map(link=>JSON.parse(Buffer.from(link.slice(8),'base64').toString()).ps)
+  const trojan=share.buildClientMultiShare(nodes.map(n=>({...n,protocol:'trojan'})),client,'shadowrocket').split('\n').map(link=>decodeURIComponent(new URL(link).hash.slice(1)))
+  for(const values of [tags,names,fragments,ps,trojan]) {
+   assert.deepEqual(values,want)
+   assert.equal(new Set(values).size,want.length)
+   assert.equal(values.some(name=>name.includes('#')),false)
+  }
+  assert.equal(JSON.stringify(nodes),snapshot)
+  console.log('TASK11 exported names:',JSON.stringify({tags,names,fragments,ps}))
+ }
+})
+
+test('unnamed node uses host and actual port rather than remark or ID',()=>{
+ const sample={...node,id:'node-de00',name:'',remark:'not a display name',port:0}
+ const client={uuid:'fixture'}
+ assert.equal(decodeURIComponent(new URL(share.buildVlessLink(sample,client)).hash.slice(1)),'example.com:0')
+ assert.equal(JSON.parse(Buffer.from(share.buildVmessLink({...sample,protocol:'vmess'},client).slice(8),'base64').toString()).ps,'example.com:0')
 })
 
 test('VMess network and default WS/gRPC transport parameters survive export',()=>{

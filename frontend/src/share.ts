@@ -127,21 +127,14 @@ function uniqueProxyNames(nodes: any[]): any[] {
   return nodes.map(node => {
     const base = safeName(node)
     let name = base
-    for (let i = 2; used.has(name); i++) name = `${base} #${i}`
+    for (let i = 2; used.has(name); i++) name = `${base} ${i}`
     used.add(name)
     return {...node, __safeName: name}
   })
 }
 
 function nodeName(node: any): string {
-  return valueOr(node.name || node.remark, `${nodeHost(node)}:${Number(node.port || 443)}`)
-}
-
-function shortNodeId(node: any): string {
-  // Backend nodeShareName derives the suffix from the persistent node ID;
-  // using host as a fallback would make empty-ID fixtures diverge.
-  const raw = String(node?.id || 'node').replace(/[^A-Za-z0-9]/g, '').toLowerCase()
-  return (raw.slice(-4) || 'node').padStart(4, '0')
+  return valueOr(node.name, `${nodeHost(node)}:${Number(node.port || 0)}`)
 }
 
 function safeName(node: any, _client?: any): string {
@@ -150,7 +143,7 @@ function safeName(node: any, _client?: any): string {
   // make the same node look different across export formats.
   const preferred = typeof node?.__safeName === 'string'
     ? node.__safeName
-    : `${nodeName(node)} #${shortNodeId(node)}`
+    : nodeName(node)
   return preferred.replace(/[\r\n]+/g, ' ').trim()
 }
 
@@ -205,7 +198,7 @@ export function buildVmessLink(node: any, client: any): string {
   const security = valueOr(node.security, 'none').toLowerCase()
   const obj: any = {
     v: '2',
-    ps: nodeName(node),
+    ps: safeName(node),
     add: nodeHost(node),
     port: String(Number(node.port || 443)),
     id: String(client.uuid || ''),
@@ -487,7 +480,7 @@ export function buildClientMultiShare(nodes: any[], client: any, format: ShareFo
   const clientNodes = nodes.filter(isClientShareNode)
   if (format === 'clash') return buildClashMetaConfig(clientNodes, client, policy)
   if (format === 'singbox') return buildSingBoxConfig(clientNodes, client, policy)
-  return clientNodes.map(n => buildNodeLink(n, client, format === 'shadowrocket' ? 'shadowrocket' : 'v2rayn')).join('\n')
+  return uniqueProxyNames(clientNodes).map(n => buildNodeLink(n, client, format === 'shadowrocket' ? 'shadowrocket' : 'v2rayn')).join('\n')
 }
 
 export function isQrShareFormat(format: ShareFormat): boolean {
