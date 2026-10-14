@@ -88,7 +88,7 @@ func uniqueSubscriptionNames(nodes []model.Node, relays []model.RelayRoute) ([]m
 	name := func(base string) string {
 		next := base
 		for n := 2; used[next]; n++ {
-			next = base + " #" + strconv.Itoa(n)
+			next = base + " " + strconv.Itoa(n)
 		}
 		used[next] = true
 		return next
