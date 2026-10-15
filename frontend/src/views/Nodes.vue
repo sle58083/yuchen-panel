@@ -58,7 +58,7 @@ const emptyForm = () => ({
   reality_public_key: '',
   reality_short_id: '',
   reality_spider_x: '/',
-  socks_username: 'yuchen',
+  socks_username: '',
   socks_password: '',
   socks_udp: false,
   remark: '',
@@ -162,7 +162,7 @@ function applySocks5(generate = true) {
   form.value.reality_public_key = ''
   form.value.reality_short_id = ''
   form.value.reality_spider_x = ''
-  form.value.socks_username = form.value.socks_username || 'yuchen'
+  if (generate || !form.value.socks_username) form.value.socks_username = randomPassword(12)
   if (generate || !form.value.socks_password) form.value.socks_password = randomPassword(22)
 }
 async function setMode(next:NodePreset|'socks5'|'advanced') {
@@ -239,7 +239,7 @@ function editNode(n:any) {
     reality_public_key: n.reality_public_key || '',
     reality_short_id: n.reality_short_id || '',
     reality_spider_x: n.reality_spider_x || '/',
-    socks_username: n.socks_username || 'yuchen',
+    socks_username: n.socks_username || randomPassword(12),
     socks_password: n.socks_password || '',
     socks_udp: n.socks_udp === true,
     remark: n.remark || '',
@@ -398,10 +398,11 @@ onMounted(load)
       <div class="row-between">
         <div><h2>SOCKS5 落地入站</h2><p class="page-desc">用于落地服务器提供 SOCKS5 入口。正式中转时，中转服务器会通过 SOCKS5 出站连接这里，平台最终看到落地服务器 IP。</p></div>
         <button class="btn secondary" @click="form.socks_password = randomPassword(22)">重新生成密码</button>
+        <button class="btn secondary" @click="form.socks_username = randomPassword(12)">重新生成用户名</button>
       </div>
       <div class="notice warn">安全提醒：SOCKS5 不应裸奔。必须设置账号密码，服务器安全组建议只允许中转服务器 IP 访问该端口。</div>
       <div class="form node-form clean-form reality-form">
-        <label class="field"><span>SOCKS5 账号</span><input v-model="form.socks_username" placeholder="yuchen" /></label>
+        <label class="field"><span>SOCKS5 账号</span><input v-model="form.socks_username" placeholder="自动生成或手动填写" /></label>
         <label class="field"><span>SOCKS5 密码</span><input v-model="form.socks_password" placeholder="自动生成或手动填写" /></label>
         <label class="field"><span>UDP 转发</span><select v-model="form.socks_udp"><option :value="false">关闭 UDP（推荐先测 TCP）</option><option :value="true">开启 UDP（实验）</option></select><em class="field-tip">当前只是 SOCKS5 入站 UDP 开关，不等于 VLESS Reality 原生 UDP。</em></label>
         <label class="field wide"><span>给中转服务器填写</span><input :value="`${form.host || '落地IP'}:${form.port} / ${form.socks_username} / ${form.socks_password}`" readonly /></label>
