@@ -1,19 +1,21 @@
 {
-  "latest": "1.0.3-rc.3",
-  "version": "1.0.3-rc.3",
+  "latest": "1.0.3-rc.4",
+  "version": "1.0.3-rc.4",
   "codename": "rc",
-  "package": "yuchen-panel-v1.0.3-rc.3.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.3/yuchen-panel-v1.0.3-rc.3.zip",
-  "sha256": "b9c8e2b67a49d465e5024105b15ee89c4fd51b042dac9dc7f2f4631e8d4a1fbe",
+  "package": "yuchen-panel-v1.0.3-rc.4.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3-rc.4/yuchen-panel-v1.0.3-rc.4.zip",
+  "sha256": "71fb873f78ee1cb87a672684653fc36f08faefac1896812942be107644bbba6e",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-10-14T21:32:16.487868Z",
+  "released_at": "2026-10-15T07:05:13.546936Z",
   "changelog": [
     "包月限流量：按客户 ID 汇总 Xray 上传与下载，Stats API 仅监听本机",
     "epoch 与服务器游标持久化，处理重启与重复上报",
-    "到期或超限停用；延长到期即续费，清零并恢复启用",
+    "到期或超限停用；延长已有到期日才续费，清零并恢复启用",
+    "长期客户首次设置到期日保留用量及启用状态",
+    "区分负数与超范围流量上限提示，移除版本跟踪的过程报告",
     "客户列表按字节显示本周期用量，30 秒刷新且编辑时暂停",
     "正常在线限额执行通常有约 30–60 秒延迟，异常时可能更久",
     "升级会轮换 JWT 密钥，旧会话失效，需要重新登录",
-    "需要匹配的新版 API 与 Agent，VPS 真机流量验收仍待用户执行"
+    "需要匹配的新版 API 与 Agent；用户已确认 rc.3 超限停用，rc.4 完整真机验收仍待执行"
   ]
 }
