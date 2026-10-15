@@ -263,6 +263,7 @@ func TestBillingRenewalSameCumulativeValueDoesNotRebill(t *testing.T) {
 	at := time.Now()
 	postTraffic(t, r, 100, 200, "xray", at)
 	c := r.store.Data.Clients["c"]
+	c.ExpireAt = at.Add(24 * time.Hour)
 	next := c
 	next.ExpireAt = at.Add(30 * 24 * time.Hour)
 	preserveAndRenewBilling(&next, c, at.Add(time.Second))
