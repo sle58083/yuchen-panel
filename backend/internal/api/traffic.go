@@ -115,7 +115,8 @@ func preserveAndRenewBilling(body *model.Client, old model.Client, now time.Time
 	if body.BillingCycleDays == 0 {
 		body.BillingCycleDays = 30
 	}
-	if body.ExpireAt.After(old.ExpireAt) {
+	// First assigning an expiry to a lifetime customer is not a renewal.
+	if !old.ExpireAt.IsZero() && body.ExpireAt.After(old.ExpireAt) {
 		body.TrafficUsedBytes, body.TrafficUsedGB = 0, 0
 		body.BillingCycleStart = body.ExpireAt.AddDate(0, 0, -body.BillingCycleDays)
 		body.TrafficResetAt = now

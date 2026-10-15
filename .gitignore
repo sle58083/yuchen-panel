@@ -1,5 +1,10 @@
 # Runtime and local environment
 .codex-release-inspect/
+# Local audit and release execution reports (keep local copies)
+RELEASE-*.md
+!RELEASE-NOTES.md
+TASK*-REPORT.md
+.audit/*-REPORT.md
 .env
 .env.*
 !.env.example

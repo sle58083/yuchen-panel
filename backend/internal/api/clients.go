@@ -202,8 +202,11 @@ func (r *Router) validateClientLocked(c *model.Client) error {
 		return fmt.Errorf("固定出口客户只能绑定一条中转线路")
 	}
 	c.RelayRouteIDs = relayClean
-	if c.TrafficLimitGB < 0 || c.TrafficLimitGB > (int64(1)<<33)-1 {
+	if c.TrafficLimitGB < 0 {
 		return fmt.Errorf("流量限制不能小于 0")
+	}
+	if c.TrafficLimitGB > (int64(1)<<33)-1 {
+		return fmt.Errorf("流量上限超出允许范围")
 	}
 	if c.BillingCycleDays < 0 || c.BillingCycleDays > 366 {
 		return fmt.Errorf("计费周期天数必须为 1-366（空值默认为 30）")
