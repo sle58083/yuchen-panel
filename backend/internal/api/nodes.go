@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"strings"
@@ -246,7 +247,7 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		n.RealityShortID = ""
 		n.RealitySpiderX = ""
 		if n.SocksUsername == "" {
-			n.SocksUsername = "yuchen"
+			n.SocksUsername = randomSocksUsername()
 		}
 		if n.SocksPassword == "" {
 			n.SocksPassword = store.NewToken()
@@ -323,4 +324,17 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		return fmt.Errorf("暂不支持的安全方式：%s", n.Security)
 	}
 	return nil
+}
+
+// Randomize SOCKS5 usernames so deployments do not share a fixed default.
+func randomSocksUsername() string {
+	const alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return store.NewToken()[:12]
+	}
+	for i, b := range buf {
+		buf[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(buf)
 }
