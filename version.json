@@ -1,12 +1,12 @@
 {
-  "latest": "1.0.5",
-  "version": "1.0.5",
+  "latest": "1.0.6",
+  "version": "1.0.6",
   "codename": "stable",
-  "package": "yuchen-panel-v1.0.5.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.5/yuchen-panel-v1.0.5.zip",
-  "sha256": "e33376bbc37932c79ce8e85bc3b733e76f9f77fe735e7e806b3d5c5eab2c4374",
+  "package": "yuchen-panel-v1.0.6.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.6/yuchen-panel-v1.0.6.zip",
+  "sha256": "27adc485ae024d8a59f12a8aba8c67926b7222480fd201acde21e745d37d9277",
   "min_supported_version": "0.7.5",
-  "released_at": "2026-10-31T18:49:19.323440Z",
+  "released_at": "2026-10-31T19:39:17.875912Z",
   "changelog": [
     "包月限流量：按客户 ID 汇总 Xray 上传与下载，Stats API 仅监听本机",
     "epoch 与服务器游标持久化，处理重启与重复上报",
