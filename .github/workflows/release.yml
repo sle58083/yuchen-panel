@@ -113,7 +113,8 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          git checkout -b release-manifest-update origin/main
+          git reset --hard
+          git checkout -B release-manifest-update origin/main
           cp "$RUNNER_TEMP/version.generated.json" version.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
