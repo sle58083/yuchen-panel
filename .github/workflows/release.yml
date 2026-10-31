@@ -41,8 +41,7 @@ jobs:
           TAG_TYPE="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type')"
           test "$TAG_TYPE" = tag
           V="${TAG#v}"
-          test "$(tr -d ' 	
-' < VERSION)" = "$V"
+          test "$(tr -d ' \\t\\r\\n' < VERSION)" = "$V"
           test "$(jq -r .version frontend/package.json)" = "$V"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo 'Existing release: refusing to overwrite or clobber assets.'
