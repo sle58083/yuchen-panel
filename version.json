@@ -1,9 +1,9 @@
 {
-  "latest": "1.0.3",
-  "version": "1.0.3",
+  "latest": "1.0.4",
+  "version": "1.0.4",
   "codename": "stable",
-  "package": "yuchen-panel-v1.0.3.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.3/yuchen-panel-v1.0.3.zip",
+  "package": "yuchen-panel-v1.0.4.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.4/yuchen-panel-v1.0.4.zip",
   "sha256": "1169daacefd9d7c5677854a91e44db205f8a71d67a2f70f4f59702b01b5db997",
   "min_supported_version": "0.7.5",
   "released_at": "2026-10-15T09:28:07.941407Z",
@@ -20,3 +20,4 @@
     "修复启动日志硬编码旧版本号，升级后日志与实际版本一致"
   ]
 }
+
