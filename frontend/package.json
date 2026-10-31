@@ -1,6 +1,6 @@
 {
   "name": "yuchen-panel-frontend",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,3 +20,4 @@
     "vue-tsc": "2.2.12"
   }
 }
+
