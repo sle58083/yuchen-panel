@@ -1,9 +1,9 @@
 {
-  "latest": "1.0.4",
-  "version": "1.0.4",
+  "latest": "1.0.5",
+  "version": "1.0.5",
   "codename": "stable",
-  "package": "yuchen-panel-v1.0.4.zip",
-  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.4/yuchen-panel-v1.0.4.zip",
+  "package": "yuchen-panel-v1.0.5.zip",
+  "download_url": "https://github.com/sle58083/yuchen-panel/releases/download/v1.0.5/yuchen-panel-v1.0.5.zip",
   "sha256": "d9060021f1c2c85ec1c2bd56cfdd4ee2f3025ab09df9fa22275dbb11f062d40c",
   "min_supported_version": "0.7.5",
   "released_at": "2026-10-31T15:45:02Z",
