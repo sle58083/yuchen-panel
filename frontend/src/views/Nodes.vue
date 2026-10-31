@@ -170,7 +170,7 @@ async function setMode(next:NodePreset|'socks5'|'advanced') {
   if (next === 'socks5') { applySocks5(true); return }
   if (next === 'advanced') return // Merely opening advanced never rewrites fields.
   Object.assign(form.value, presetParameters(next))
-  form.value.path = next === 'balanced' ? 'yuchen' : ''
+  form.value.path = ''
   if (next === 'anti') await applyRecommended(true)
   else form.value.sni = ''
 }
