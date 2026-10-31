@@ -100,7 +100,7 @@ watch(() => form.value.security, () => {
 watch(() => form.value.transport, () => {
   if (form.value.transport === 'tcp') form.value.path = ''
   if (form.value.transport === 'ws' && !form.value.path) form.value.path = '/yuchen'
-  if (form.value.transport === 'grpc' && !form.value.path) form.value.path = 'yuchen'
+  if (form.value.transport === 'grpc' && !form.value.path) form.value.path = randomPassword(12)
 })
 watch(shareClientId, updateShareLink)
 watch(shareFormat, updateShareLink)

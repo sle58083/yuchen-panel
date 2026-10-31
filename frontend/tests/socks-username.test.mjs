@@ -64,3 +64,8 @@ test('SOCKS5 empty legacy username is generated and explicit regeneration replac
   assert.match(source, /@click="form.socks_username = randomPassword\(12\)">重新生成用户名/)
   assert.match(source, /v-model="form.socks_username" placeholder="自动生成或手动填写"/)
 })
+
+test('new gRPC nodes do not use the legacy fixed service name default', () => {
+  assert.match(source, /form\.value\.transport === 'grpc'.*randomPassword\(12\)/)
+  assert.match(source, /transport === 'grpc' && !form\.value\.path/)
+})
