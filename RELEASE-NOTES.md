@@ -1,3 +1,9 @@
+# v1.0.5 — 新建 gRPC 入站随机 serviceName
+
+- 新建 gRPC 入站时自动生成随机 12 位 `serviceName`，不再预填固定的 `yuchen`。
+- 编辑已有节点时保留原有 `serviceName`，已有节点和订阅不会因升级突然断线。
+- 继续包含 v1.0.4 的 SOCKS5 随机用户名安全修复；gRPC 默认值仅对新建表单生效。
+
 # v1.0.4 — SOCKS5 凭据安全修复
 
 - SOCKS5 入站在未填写用户名时使用 `crypto/rand` 生成 12 位随机用户名，避免不同部署共用固定账号。
