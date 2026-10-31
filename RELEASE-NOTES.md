@@ -1,3 +1,9 @@
+# v1.0.6 — 修复均衡预设覆盖随机 serviceName
+
+- 修复点击“均衡”预设后把随机 gRPC `serviceName` 覆盖回固定 `yuchen` 的问题。
+- 新建 gRPC 入站现在会稳定生成随机 12 位 serviceName；已有节点继续保留原值。
+- 继续包含 v1.0.5 的新建 gRPC 随机 serviceName 和 SOCKS5 随机用户名修复。
+
 # v1.0.5 — 新建 gRPC 入站随机 serviceName
 
 - 新建 gRPC 入站时自动生成随机 12 位 `serviceName`，不再预填固定的 `yuchen`。
