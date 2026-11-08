@@ -145,6 +145,12 @@ json_value() {
   jq -er --arg key "${key}" '.[$key] | select(type == "string" and length > 0)' "${file}"
 }
 
+github_api_curl_args() {
+  printf '%s\n' \
+    --header 'X-GitHub-Api-Version: 2022-11-28' \
+    --header "User-Agent: ${APP_NAME}-installer/${VERSION:-unknown}"
+}
+
 validate_manifest_field() {
   local name="$1"
   local value="$2"
@@ -168,15 +174,28 @@ fetch_manifest() {
 
   PACKAGE_NAME="$(json_value package "${MANIFEST_FILE}")"
   VERSION="$(json_value version "${MANIFEST_FILE}")"
-  DOWNLOAD_URL="$(json_value download_url "${MANIFEST_FILE}")"
   SHA256="$(json_value sha256 "${MANIFEST_FILE}")"
 
   validate_manifest_field "package" "${PACKAGE_NAME}"
   validate_manifest_field "version" "${VERSION}"
-  validate_manifest_field "download_url" "${DOWNLOAD_URL}"
   validate_manifest_field "sha256" "${SHA256}"
   validate_sha256 "${SHA256}"
   validate_install_inputs
+
+  RELEASE_API_URL="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/v${VERSION}"
+  RELEASE_FILE="${WORK_DIR}/release.json"
+  log "读取 GitHub Release API：${RELEASE_API_URL}"
+  mapfile -t GITHUB_API_ARGS < <(github_api_curl_args)
+  curl --proto '=https' --proto-redir '=https' -fL --connect-timeout 10 --retry 3 \
+    "${GITHUB_API_ARGS[@]}" --header 'Accept: application/vnd.github+json' \
+    -o "${RELEASE_FILE}" "${RELEASE_API_URL}" \
+    || die "无法读取 GitHub Release API"
+
+  ASSET_API_URL="$(jq -er --arg package "${PACKAGE_NAME}" \
+    '.assets[]? | select(.name == $package) | .url' "${RELEASE_FILE}" | head -n 1)" \
+    || die "GitHub Release 中未找到安装包：${PACKAGE_NAME}"
+  [[ ${ASSET_API_URL} == https://api.github.com/repos/*/releases/assets/* ]] \
+    || die "GitHub Release 资产 API 地址不安全"
 }
 
 validate_install_inputs() {
@@ -187,13 +206,15 @@ validate_install_inputs() {
   [[ ${INSTALL_ROOT} == /* && -n ${INSTALL_ROOT//\//} && ${INSTALL_ROOT} != *..* ]] \
     || die "安装根目录必须为非根目录的绝对路径，且不能含 .."
   [[ ${INSTALL_ROOT} != *$'\n'* && ${INSTALL_ROOT} != *$'\r'* ]] || die "安装根目录含控制字符"
-  [[ ${DOWNLOAD_URL} == https://* ]] || die "升级包下载地址必须使用 HTTPS"
 }
 
 download_release() {
   PACKAGE_FILE="${WORK_DIR}/${PACKAGE_NAME}"
-  log "下载稳定包：${DOWNLOAD_URL}"
-  curl --proto '=https' --proto-redir '=https' -fL --connect-timeout 10 --retry 3 -o "${PACKAGE_FILE}" "${DOWNLOAD_URL}" \
+  log "通过 GitHub 资产 API 下载稳定包：${PACKAGE_NAME}"
+  mapfile -t GITHUB_API_ARGS < <(github_api_curl_args)
+  curl --proto '=https' --proto-redir '=https' -fL --connect-timeout 10 --retry 3 \
+    "${GITHUB_API_ARGS[@]}" --header 'Accept: application/octet-stream' \
+    -o "${PACKAGE_FILE}" "${ASSET_API_URL}" \
     || die "无法下载稳定包"
 
   log "校验 SHA256"
@@ -330,3 +351,4 @@ main() {
 if [[ ${BASH_SOURCE[0]:-$0} == "$0" ]]; then
   main "$@"
 fi
+
