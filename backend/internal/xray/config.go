@@ -35,8 +35,22 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 		if !node.Enabled {
 			continue
 		}
-		// Retired Shadowsocks nodes remain in the database for migration only.
 		if strings.EqualFold(strings.TrimSpace(node.Protocol), "shadowsocks") {
+			inbounds = append(inbounds, map[string]any{
+				"listen":   "0.0.0.0",
+				"port":     node.Port,
+				"protocol": "shadowsocks",
+				"settings": map[string]any{
+					"password": node.SSPassword,
+					"method":   node.SSMethod,
+				},
+				"sniffing": map[string]any{
+					"enabled":      true,
+					"destOverride": []any{"http", "tls", "quic"},
+					"routeOnly":    false,
+				},
+				"tag": node.ID,
+			})
 			continue
 		}
 		if node.Protocol == "socks" {

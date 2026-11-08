@@ -22,7 +22,7 @@ func TestSubscriptionFormatRouting(t *testing.T) {
 	s := authorizationStore(t)
 	s.Data.Clients["c"] = model.Client{ID: "c", Username: "fixture", UUID: fixtureUUID, Enabled: true, NodeIDs: []string{"n", "old"}, SubscribeToken: "private-token-do-not-log"}
 	s.Data.Nodes["n"] = model.Node{ID: "n", Name: "node", Protocol: "vless", Transport: "tcp", Security: "none", Host: "192.0.2.1", Port: 23456, Enabled: true}
-	s.Data.Nodes["old"] = model.Node{ID: "old", Protocol: "shadowsocks", Enabled: true}
+	s.Data.Nodes["old"] = model.Node{ID: "old", Protocol: "shadowsocks", Host: "192.0.2.2", Port: 23457, SSMethod: "aes-256-gcm", SSPassword: "ss-format-secret", Enabled: true}
 	r := &Router{store: s}
 	for _, tc := range []struct{ query, ua, format string }{
 		{"?format=singbox", "", "singbox"}, {"?format=sing-box", "", "singbox"}, {"?format=sb", "", "singbox"}, {"?format=json", "", "singbox"},
@@ -53,14 +53,14 @@ func TestSubscriptionFormatRouting(t *testing.T) {
 			if err := json.Unmarshal(body, &config); err != nil {
 				t.Fatal(err)
 			}
-			if len(config.Outbounds) != 3 {
+			if len(config.Outbounds) != 4 {
 				t.Fatal("visible nodes + selector + direct count incorrect")
 			}
 		case "clash":
 			if !strings.HasPrefix(contentType, "text/yaml") || !strings.Contains(string(body), "proxies:") {
 				t.Fatal("invalid YAML response")
 			}
-			if count := clashProxyEntryCount(string(body)); count != 1 {
+			if count := clashProxyEntryCount(string(body)); count != 2 {
 				t.Fatalf("unexpected YAML proxies: %d", count)
 			}
 		case "v2rayn":
@@ -132,6 +132,7 @@ func validateSingBoxSchema(raw []byte) error {
 		Password       string `json:"password"`
 		Security       string `json:"security"`
 		PacketEncoding string `json:"packet_encoding"`
+		Method         string `json:"method"`
 		TLS            *tls   `json:"tls"`
 		Transport      *struct {
 			Type        string `json:"type"`
@@ -232,13 +233,17 @@ func validateSingBoxSchema(raw []byte) error {
 		tags[out.Tag] = true
 		switch out.Type {
 		case "direct", "selector":
-		case "vless", "vmess", "trojan":
+		case "vless", "vmess", "trojan", "shadowsocks":
 			if out.Server == "" || out.ServerPort < 1 || out.ServerPort > 65535 {
 				return fmt.Errorf("invalid remote endpoint")
 			}
 			if out.Type == "trojan" {
 				if out.Password == "" || out.TLS == nil {
 					return fmt.Errorf("missing Trojan credentials/TLS")
+				}
+			} else if out.Type == "shadowsocks" {
+				if out.Method == "" || out.Password == "" {
+					return fmt.Errorf("missing Shadowsocks credentials")
 				}
 			} else if out.UUID == "" {
 				return fmt.Errorf("missing UUID")
@@ -360,6 +365,59 @@ func TestMobileURIPasswordAndIPv6RoundTrip(t *testing.T) {
 	yaml := strings.Join(buildClashProxyLinesForNode(node, client), "\n")
 	if !strings.Contains(yaml, `network: "grpc"`) || !strings.Contains(yaml, `grpc-service-name: "yuchen"`) {
 		t.Fatal("Clash VMess gRPC transport omitted")
+	}
+}
+
+func TestShadowsocksExportsRoundTrip(t *testing.T) {
+	node := model.Node{
+		ID:         "ss-node",
+		Name:       "SS 测试 #1",
+		Protocol:   "shadowsocks",
+		Host:       "2001:db8::2",
+		Port:       24443,
+		Transport:  "ws",
+		Security:   "reality",
+		SNI:        "ignored.example",
+		SSMethod:   "chacha20-ietf-poly1305",
+		SSPassword: `p@ss:word/中文`,
+		Enabled:    true,
+	}
+	client := model.Client{UUID: fixtureUUID}
+	link := buildNodeShareLink(node, client)
+	parsed, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Scheme != "ss" || parsed.Hostname() != node.Host || parsed.Port() != fmt.Sprint(node.Port) || parsed.Fragment != node.Name {
+		t.Fatalf("unexpected Shadowsocks link %q", link)
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(parsed.User.Username())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.SplitN(string(decoded), ":", 2)
+	if len(parts) != 2 || parts[0] != node.SSMethod || parts[1] != node.SSPassword {
+		t.Fatalf("decoded credentials=%q", decoded)
+	}
+	clash := strings.Join(buildClashProxyLinesForNode(node, client), "\n")
+	for _, want := range []string{`type: ss`, `cipher: "chacha20-ietf-poly1305"`, `password: "p@ss:word/中文"`, "udp: true"} {
+		if !strings.Contains(clash, want) {
+			t.Fatalf("Clash output missing %q: %s", want, clash)
+		}
+	}
+	for _, forbidden := range []string{"tls:", "reality-opts:", "ws-opts:", "grpc-opts:"} {
+		if strings.Contains(clash, forbidden) {
+			t.Fatalf("Clash SS output contains %q: %s", forbidden, clash)
+		}
+	}
+	singbox := singBoxNode(node, client)
+	if singbox["type"] != "shadowsocks" || singbox["method"] != node.SSMethod || singbox["password"] != node.SSPassword {
+		t.Fatalf("sing-box output=%#v", singbox)
+	}
+	for _, forbidden := range []string{"uuid", "tls", "transport", "packet_encoding"} {
+		if _, ok := singbox[forbidden]; ok {
+			t.Fatalf("sing-box SS output contains %q: %#v", forbidden, singbox)
+		}
 	}
 }
 

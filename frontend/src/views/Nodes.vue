@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
-import { NODE_PRESETS, DEFAULT_NODE_PRESET, presetParameters, detectNodePreset, serverSpecAdvice, type NodePreset } from '../nodePresets'
+import { NODE_PRESETS, DEFAULT_NODE_PRESET, SHADOWSOCKS_METHODS, presetParameters, detectNodePreset, serverSpecAdvice, type NodePreset } from '../nodePresets'
 import { copyText } from '../clipboard'
 import { buildClientShare, clientsForNode, isQrShareFormat, qrImageUrl, shareFormatLabel, shareFormatOptions, type ShareFormat } from '../share'
 
@@ -61,6 +61,8 @@ const emptyForm = () => ({
   socks_username: '',
   socks_password: '',
   socks_udp: false,
+  ss_method: 'aes-256-gcm',
+  ss_password: '',
   remark: '',
   enabled: true,
 })
@@ -86,6 +88,7 @@ function fillFromServer() {
 watch(() => form.value.server_id, fillFromServer)
 watch(() => form.value.protocol, () => {
   if (form.value.protocol === 'socks') applySocks5(false)
+  if (form.value.protocol === 'shadowsocks') applyShadowsocks(false)
   if (form.value.protocol === 'trojan' && !editingId.value) form.value.security = 'tls'
   // VMess 不支持 Reality。
   if (form.value.protocol === 'vmess' && form.value.security === 'reality') {
@@ -165,6 +168,24 @@ function applySocks5(generate = true) {
   if (generate || !form.value.socks_username) form.value.socks_username = randomPassword(12)
   if (generate || !form.value.socks_password) form.value.socks_password = randomPassword(22)
 }
+function applyShadowsocks(generate = true) {
+  form.value.protocol = 'shadowsocks'
+  form.value.transport = 'tcp'
+  form.value.security = 'none'
+  form.value.sni = ''
+  form.value.path = ''
+  form.value.fingerprint = ''
+  form.value.reality_dest = ''
+  form.value.reality_private_key = ''
+  form.value.reality_public_key = ''
+  form.value.reality_short_id = ''
+  form.value.reality_spider_x = ''
+  form.value.socks_username = ''
+  form.value.socks_password = ''
+  form.value.socks_udp = false
+  if (!form.value.ss_method) form.value.ss_method = 'aes-256-gcm'
+  if (generate || !form.value.ss_password) form.value.ss_password = randomPassword(32)
+}
 async function setMode(next:NodePreset|'socks5'|'advanced') {
   mode.value = next
   if (next === 'socks5') { applySocks5(true); return }
@@ -186,6 +207,10 @@ function validateLocal() {
     if (!String(form.value.socks_username || '').trim()) return 'SOCKS5 入站必须填写账号。'
     if (!String(form.value.socks_password || '').trim()) return 'SOCKS5 入站必须填写密码。'
   }
+  if (form.value.protocol === 'shadowsocks') {
+    if (!SHADOWSOCKS_METHODS.includes(String(form.value.ss_method || '').trim() as typeof SHADOWSOCKS_METHODS[number])) return '请选择有效的 Shadowsocks 加密方式。'
+    if (!String(form.value.ss_password || '').trim()) return 'Shadowsocks 入站必须填写密码。'
+  }
   if (form.value.security === 'reality' && !String(form.value.reality_dest || '').includes(':443')) return 'Reality 目标建议填写类似 www.intel.com:443。'
   return ''
 }
@@ -204,7 +229,7 @@ async function saveNode() {
   if (err) { error.value = err; return }
   saving.value = true
   try {
-    if (form.value.protocol !== 'socks' && form.value.security === 'reality') await ensureRealityKeys(false)
+    if (form.value.protocol !== 'socks' && form.value.protocol !== 'shadowsocks' && form.value.security === 'reality') await ensureRealityKeys(false)
     const payload = { ...form.value, port: Number(form.value.port) }
     if (payload.transport === 'tcp') payload.path = ''
     if (editingId.value) {
@@ -242,6 +267,8 @@ function editNode(n:any) {
     socks_username: n.socks_username || randomPassword(12),
     socks_password: n.socks_password || '',
     socks_udp: n.socks_udp === true,
+    ss_method: n.ss_method || 'aes-256-gcm',
+    ss_password: n.ss_password || '',
     remark: n.remark || '',
     enabled: n.enabled !== false,
   }
@@ -330,16 +357,12 @@ onMounted(load)
   <div class="page-head">
     <div>
       <h1 class="page-title">入站管理</h1>
-      <p class="page-desc">协议下拉选择 VLESS 或 SOCKS5，快捷模板只负责填默认参数。</p>
+      <p class="page-desc">协议下拉选择 VLESS、Shadowsocks 或 SOCKS5，快捷模板只负责填默认参数。</p>
     </div>
   </div>
 
   <div class="notice ok">新增入站默认绑定选中的服务器。客户节点建议使用 VLESS Reality；落地出口可创建 SOCKS5 入站，供后续中转服务器连接。</div>
   <div class="notice warn">部分服务器商或机房会限制 10000 以下低端口外部访问。Xray 即使显示已监听，客户端也可能连不上；建议新节点统一使用 10000-60000。</div>
-
-  <div v-if="nodes.some(n => String(n.protocol).toLowerCase() === 'shadowsocks')" class="notice warn">
-    该节点为 Shadowsocks 协议，面板已停止下发，请改用 VLESS/Reality 后重新配置。
-  </div>
 
   <div class="panel node-list-panel">
     <div class="section-head">
@@ -386,12 +409,20 @@ onMounted(load)
       <label class="field"><span>入站名称</span><input v-model="form.name" placeholder="例如：美国01 Reality" /></label>
       <label class="field"><span>入站域名 / Host</span><input v-model="form.host" placeholder="服务器公网 IP 或域名" /></label>
       <label class="field"><span>端口</span><input v-model.number="form.port" placeholder="例如 25642" /><em v-if="Number(form.port) && Number(form.port) < 10000" class="field-tip danger-tip">当前端口低于 10000，部分服务器外部不可达，建议改为 10000-60000。</em><em v-else class="field-tip">推荐 10000-60000；创建后用该端口生成客户端链接。</em></label>
-      <label class="field"><span>协议</span><select v-model="form.protocol"><option value="vless">VLESS</option><option value="socks">SOCKS5</option><option v-if="mode==='advanced'" value="vmess">VMess</option><option v-if="mode==='advanced'" value="trojan">Trojan</option></select><em class="field-tip">协议决定入站类型；SOCKS5 主要用于落地出口。</em></label>
-      <label v-if="mode==='advanced'" class="field"><span>传输方式</span><select v-model="form.transport" :disabled="form.protocol==='socks'"><option>tcp</option><option v-if="mode==='advanced'">ws</option><option v-if="mode==='advanced'">grpc</option></select></label>
-      <label v-if="mode==='advanced'" class="field"><span>安全方式</span><select v-model="form.security" :disabled="form.protocol==='socks'"><option value="reality" v-if="form.protocol==='vless' || form.protocol==='trojan'">Reality（推荐）</option><option>none</option><option v-if="mode==='advanced'">tls</option></select></label>
-      <label class="field" v-if="form.protocol !== 'socks' && form.transport !== 'tcp'"><span>{{ form.transport === 'grpc' ? '服务名称' : '路径' }}</span><input v-model="form.path" /></label>
-      <label class="field" v-else><span>路径</span><input :value="form.protocol === 'socks' ? 'SOCKS5 不需要填写路径' : 'TCP 模式不需要填写路径'" disabled /></label>
+      <label class="field"><span>协议</span><select v-model="form.protocol"><option value="vless">VLESS</option><option value="shadowsocks">Shadowsocks</option><option value="socks">SOCKS5</option><option v-if="mode==='advanced'" value="vmess">VMess</option><option v-if="mode==='advanced'" value="trojan">Trojan</option></select><em class="field-tip">协议决定入站类型；SOCKS5 主要用于落地出口。</em></label>
+      <label v-if="mode==='advanced' && form.protocol !== 'shadowsocks'" class="field"><span>传输方式</span><select v-model="form.transport" :disabled="form.protocol==='socks'"><option>tcp</option><option v-if="mode==='advanced'">ws</option><option v-if="mode==='advanced'">grpc</option></select></label>
+      <label v-if="mode==='advanced' && form.protocol !== 'shadowsocks'" class="field"><span>安全方式</span><select v-model="form.security" :disabled="form.protocol==='socks'"><option value="reality" v-if="form.protocol==='vless' || form.protocol==='trojan'">Reality（推荐）</option><option>none</option><option v-if="mode==='advanced'">tls</option></select></label>
+      <label class="field" v-if="form.protocol !== 'shadowsocks' && form.protocol !== 'socks' && form.transport !== 'tcp'"><span>{{ form.transport === 'grpc' ? '服务名称' : '路径' }}</span><input v-model="form.path" /></label>
+      <label class="field" v-else-if="form.protocol !== 'shadowsocks'"><span>路径</span><input :value="form.protocol === 'socks' ? 'SOCKS5 不需要填写路径' : 'TCP 模式不需要填写路径'" disabled /></label>
       <label class="field wide"><span>备注</span><input v-model="form.remark" placeholder="例如：正式客户 / TikTok 专线 / AI 工具" /></label>
+    </div>
+
+    <div v-if="form.protocol === 'shadowsocks'" class="reality-box">
+      <div class="row-between"><div><h2>Shadowsocks 入站</h2><p class="page-desc">Xray 单用户 Shadowsocks 入站，使用同一组加密方式和密码生成客户端订阅。</p></div><button class="btn secondary" @click="form.ss_password = randomPassword(32)">重新生成密码</button></div>
+      <div class="form node-form clean-form reality-form">
+        <label class="field"><span>加密方式</span><select v-model="form.ss_method"><option v-for="method in SHADOWSOCKS_METHODS" :key="method">{{ method }}</option></select></label>
+        <label class="field"><span>密码</span><input v-model="form.ss_password" type="password" autocomplete="new-password" placeholder="自动生成或手动填写" /></label>
+      </div>
     </div>
 
     <div v-if="form.protocol === 'socks'" class="reality-box">
@@ -409,7 +440,7 @@ onMounted(load)
       </div>
     </div>
 
-    <div v-if="form.protocol !== 'socks' && form.security==='reality'" class="reality-box">
+    <div v-if="form.protocol !== 'socks' && form.protocol !== 'shadowsocks' && form.security==='reality'" class="reality-box">
       <div class="row-between">
         <div><h2>Reality 推荐配置</h2><p class="page-desc">用于提升连接层 TLS 特征自然度。账号稳定性仍取决于 IP、DNS、设备环境和操作行为。</p></div>
         <button class="btn secondary" @click="ensureRealityKeys(true)">重新生成密钥</button>

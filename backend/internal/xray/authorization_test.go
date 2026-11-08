@@ -32,15 +32,33 @@ func TestGenerateServerConfigExcludesUnauthorizedClients(t *testing.T) {
 	}
 }
 
-func TestNoShadowsocksInGeneratedConfig(t *testing.T) {
-	for _, protocol := range []string{"shadowsocks", "Shadowsocks", " SHADOWSOCKS "} {
-		node := model.Node{ID: "legacy", Protocol: protocol, Enabled: true, Port: 23456, SSPassword: "must-not-export"}
-		raw, err := json.Marshal(GenerateServerConfig([]model.Node{node}, nil, nil, nil, model.NetworkPolicy{}))
-		if err != nil {
-			t.Fatal(err)
+func TestGenerateShadowsocksInbound(t *testing.T) {
+	node := model.Node{ID: "ss-node", Protocol: "shadowsocks", Enabled: true, Port: 23456, SSMethod: "aes-256-gcm", SSPassword: "ss-password"}
+	cfg := GenerateServerConfig([]model.Node{node}, nil, nil, nil, model.NetworkPolicy{})
+	inbounds := cfg["inbounds"].([]any)
+	var inbound map[string]any
+	for _, raw := range inbounds {
+		candidate := raw.(map[string]any)
+		if candidate["tag"] == node.ID {
+			inbound = candidate
+			break
 		}
-		if strings.Contains(strings.ToLower(string(raw)), "shadowsocks") || strings.Contains(string(raw), node.SSPassword) {
-			t.Fatal("retired protocol exported")
-		}
+	}
+	if inbound == nil {
+		t.Fatal("Shadowsocks inbound missing")
+	}
+	if inbound["protocol"] != "shadowsocks" || inbound["streamSettings"] != nil {
+		t.Fatalf("unexpected Shadowsocks transport config: %#v", inbound)
+	}
+	settings := inbound["settings"].(map[string]any)
+	if settings["method"] != node.SSMethod || settings["password"] != node.SSPassword {
+		t.Fatalf("settings=%#v", settings)
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), node.SSPassword) {
+		t.Fatal("Shadowsocks password missing from generated config")
 	}
 }

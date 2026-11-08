@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -52,11 +53,11 @@ func TestDeletingLastAuthorizationDisablesOnlyAffectedClient(t *testing.T) {
 	}
 }
 
-func TestSubscriptionUsesExplicitGrantsAndRetiresShadowsocks(t *testing.T) {
+func TestSubscriptionUsesExplicitGrantsAndIncludesShadowsocks(t *testing.T) {
 	s := authorizationStore(t)
 	r := &Router{store: s}
 	s.Data.Nodes["node"] = model.Node{ID: "node", Protocol: "vless", Host: "example.com", Port: 23456, Enabled: true}
-	s.Data.Nodes["old"] = model.Node{ID: "old", Protocol: "shadowsocks", Host: "example.com", Port: 23457, Enabled: true}
+	s.Data.Nodes["old"] = model.Node{ID: "old", Protocol: "shadowsocks", Host: "example.com", Port: 23457, SSMethod: "aes-256-gcm", SSPassword: "ss-secret", Enabled: true}
 	for _, ids := range [][]string{nil, {"node", "old"}} {
 		s.Data.Clients["client"] = model.Client{ID: "client", SubscribeToken: "token", Enabled: true, UUID: "uuid-client", NodeIDs: ids}
 		w := httptest.NewRecorder()
@@ -64,8 +65,8 @@ func TestSubscriptionUsesExplicitGrantsAndRetiresShadowsocks(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatal(w.Code)
 		}
-		if strings.HasPrefix(w.Body.String(), "ss://") || strings.Contains(w.Body.String(), "\nss://") {
-			t.Fatal("retired protocol in subscription")
+		if strings.Contains(w.Body.String(), "ss://") != (len(ids) > 0) {
+			t.Fatal("Shadowsocks subscription grant differs from core config")
 		}
 		if strings.Contains(w.Body.String(), "uuid-client") != (len(ids) > 0) {
 			t.Fatal("subscription grant differs from core config")
@@ -83,13 +84,20 @@ func TestSubscriptionUsesExplicitGrantsAndRetiresShadowsocks(t *testing.T) {
 	}
 }
 
-func TestNewShadowsocksNodeIsRejected(t *testing.T) {
+func TestNewShadowsocksNodeIsNormalized(t *testing.T) {
 	s := authorizationStore(t)
 	s.Data.Servers = map[string]model.Server{"server": {ID: "server", IP: "127.0.0.1", Host: "127.0.0.1"}}
 	r := &Router{store: s}
 	w := httptest.NewRecorder()
-	r.nodes(w, httptest.NewRequest("POST", "/api/nodes", strings.NewReader(`{"name":"legacy","protocol":"shadowsocks","server_id":"server","port":23456}`)))
-	if w.Code != 400 || !strings.Contains(w.Body.String(), "面板已停用 Shadowsocks") {
+	r.nodes(w, httptest.NewRequest("POST", "/api/nodes", strings.NewReader(`{"name":"legacy","protocol":"shadowsocks","server_id":"server","port":23456,"transport":"ws","security":"reality","sni":"bad.example","reality_dest":"bad.example:443"}`)))
+	if w.Code != 201 {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body)
+	}
+	var node model.Node
+	if err := json.Unmarshal(w.Body.Bytes(), &node); err != nil {
+		t.Fatal(err)
+	}
+	if node.Transport != "tcp" || node.Security != "none" || node.SSMethod != "aes-256-gcm" || node.SSPassword == "" || node.SNI != "" || node.RealityDest != "" {
+		t.Fatalf("normalized node=%#v", node)
 	}
 }

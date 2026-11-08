@@ -20,7 +20,7 @@ import (
 // SOCKS5 与 dokodemo-door 属于内部链路入站，不生成客户订阅。
 func isShareableNodeProtocol(p string) bool {
 	switch strings.ToLower(strings.TrimSpace(p)) {
-	case "vless", "vmess", "trojan":
+	case "vless", "vmess", "trojan", "shadowsocks":
 		return true
 	}
 	return false
@@ -274,12 +274,14 @@ func buildClashMetaSubscription(nodes []model.Node, relays []model.RelayRoute, c
 }
 
 // buildNodeShareLink 按入站协议生成对应的分享链接：
-// vless://、vmess://（base64 JSON）、trojan://。
+// vless://、vmess://（base64 JSON）、trojan://、ss://（SIP002）。
 func buildNodeShareLink(n model.Node, client model.Client) string {
 	if !isShareableNodeProtocol(n.Protocol) {
 		return ""
 	}
 	switch strings.ToLower(strings.TrimSpace(n.Protocol)) {
+	case "shadowsocks":
+		return buildShadowsocksShareLink(n)
 	case "vmess":
 		return buildVmessShareLink(n, client)
 	case "trojan":
@@ -287,6 +289,13 @@ func buildNodeShareLink(n model.Node, client model.Client) string {
 	default:
 		return buildVlessShareLink(n, client)
 	}
+}
+
+func buildShadowsocksShareLink(n model.Node) string {
+	credentials := base64.RawURLEncoding.EncodeToString([]byte(valueOr(n.SSMethod, "aes-256-gcm") + ":" + n.SSPassword))
+	endpoint := net.JoinHostPort(strings.Trim(nodeHost(n), "[]"), strconv.Itoa(n.Port))
+	base := (&url.URL{Scheme: "ss", Host: endpoint, Fragment: nodeShareName(n)}).String()
+	return strings.Replace(base, "ss://", "ss://"+credentials+"@", 1)
 }
 
 func buildVlessShareLink(n model.Node, client model.Client) string {
@@ -443,6 +452,16 @@ func buildClashProxyLinesForNode(n model.Node, client model.Client) []string {
 	transport := strings.ToLower(valueOr(n.Transport, "tcp"))
 	security := strings.ToLower(valueOr(n.Security, "none"))
 	switch strings.ToLower(strings.TrimSpace(n.Protocol)) {
+	case "shadowsocks":
+		return []string{
+			fmt.Sprintf("  - name: %s", yamlQuote(name)),
+			"    type: ss",
+			fmt.Sprintf("    server: %s", yamlQuote(host)),
+			fmt.Sprintf("    port: %d", n.Port),
+			fmt.Sprintf("    cipher: %s", yamlQuote(n.SSMethod)),
+			fmt.Sprintf("    password: %s", yamlQuote(n.SSPassword)),
+			"    udp: true",
+		}
 	case "vmess":
 		lines := []string{
 			fmt.Sprintf("  - name: %s", yamlQuote(name)),
