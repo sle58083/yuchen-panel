@@ -23,7 +23,7 @@ func TestInstallerRejectsMaliciousManifestBeforeExtraction(t *testing.T) {
 		{"shell", "version", "1.0.3-$(id)", "", false},
 		{"package-traversal", "package", "../bad.zip", "", false},
 		{"package-dotdot", "package", "bad..zip", "", false},
-		{"http", "download_url", "http://example.com/p.zip", "", false},
+		{"package-extension", "package", "panel.tar.gz", "", false},
 		{"root", "version", "1.0.3", "/", false},
 		{"multiple-root", "version", "1.0.3", "////", false},
 		{"relative-root", "version", "1.0.3", "relative", false},
