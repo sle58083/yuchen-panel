@@ -1,0 +1,26 @@
+name: Network hotfix checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Bash syntax
+        run: |
+          for script in deploy/network-hotfix/*.sh scripts/network/*.sh; do
+            bash -n "$script"
+          done
+      - name: Hotfix transformation regression checks
+        run: python3 tests/test_network_hotfix.py
+      - name: Backend and Agent tests
+        run: make test
