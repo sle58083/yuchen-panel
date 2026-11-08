@@ -54,6 +54,9 @@ func TestGenerateShadowsocksInbound(t *testing.T) {
 	if settings["method"] != node.SSMethod || settings["password"] != node.SSPassword {
 		t.Fatalf("settings=%#v", settings)
 	}
+	if settings["network"] != "tcp,udp" {
+		t.Fatalf("Shadowsocks network=%v, want tcp,udp", settings["network"])
+	}
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)

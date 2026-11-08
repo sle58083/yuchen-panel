@@ -43,6 +43,7 @@ func GenerateServerConfig(nodes []model.Node, clients []model.Client, relayRoute
 				"settings": map[string]any{
 					"password": node.SSPassword,
 					"method":   node.SSMethod,
+					"network":  "tcp,udp",
 				},
 				"sniffing": map[string]any{
 					"enabled":      true,
