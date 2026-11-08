@@ -51,3 +51,29 @@ func TestNodePresetDefaultsAndStoredSecurity(t *testing.T) {
 		})
 	}
 }
+
+func TestShadowsocksMethodValidation(t *testing.T) {
+	t.Setenv("YC_ADMIN_USERNAME", "test-administrator")
+	t.Setenv("YC_ADMIN_PASSWORD", "test-password-123")
+	s, err := store.Open(t.TempDir() + "/panel.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Router{store: s}
+	for _, method := range []string{"aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"} {
+		s.Mu.Lock()
+		n := model.Node{Name: method, Protocol: "shadowsocks", SSMethod: method, SSPassword: "password", Port: 25000, Enabled: true}
+		err = r.normalizeNodeLocked(&n, "")
+		s.Mu.Unlock()
+		if err != nil {
+			t.Fatalf("method %q rejected: %v", method, err)
+		}
+	}
+	s.Mu.Lock()
+	n := model.Node{Name: "invalid", Protocol: "shadowsocks", SSMethod: "rc4-md5", SSPassword: "password", Port: 25001, Enabled: true}
+	err = r.normalizeNodeLocked(&n, "")
+	s.Mu.Unlock()
+	if err == nil {
+		t.Fatal("unsupported Shadowsocks method accepted")
+	}
+}

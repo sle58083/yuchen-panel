@@ -1,4 +1,11 @@
 export type NodePreset = 'fast' | 'balanced' | 'anti'
+export const SHADOWSOCKS_METHODS = [
+  'aes-128-gcm',
+  'aes-256-gcm',
+  'chacha20-ietf-poly1305',
+  '2022-blake3-aes-128-gcm',
+  '2022-blake3-aes-256-gcm',
+] as const
 // The default is a user-confirmed deployment policy, not a throughput benchmark.
 export const DEFAULT_NODE_PRESET: NodePreset = 'anti'
 export const NODE_PRESETS = [

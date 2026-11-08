@@ -137,13 +137,16 @@ test('empty, disabled, expired and fixed-exit clients have no ordinary node gran
  assert.equal(share.clientCanUseNode({enabled:true,node_ids:['node'],expire_at:'invalid'},node),false)
 })
 
-test('retired protocols cannot be shared in any format',()=>{
- const retired={...node,protocol:'shadowsocks'}
- assert.equal(share.isClientShareNode(retired),false)
+test('Shadowsocks can be shared in every supported format',()=>{
+ const ss={...node,protocol:'shadowsocks',ss_method:'aes-256-gcm',ss_password:'p@ss:word/中文'}
+ assert.equal(share.isClientShareNode(ss),true)
+ const link=share.buildNodeLink(ss,{uuid:'test'})
+ assert.match(link,/^ss:\/\//)
  for(const format of ['v2rayn','shadowrocket','clash','singbox']) {
-  assert.throws(()=>share.buildClientShare(retired,{uuid:'test'},format))
-  const config=share.buildClientMultiShare([retired],{enabled:true,node_ids:['node'],uuid:'test'},format)
-  assert.equal(/shadowsocks|(?:^|\n)ss:\/\//i.test(config),false)
+  const config=share.buildClientShare(ss,{uuid:'test'},format)
+  if (format === 'clash') assert.match(config,/type: ss/)
+  else if (format === 'singbox') assert.match(config,/"type": "shadowsocks"/)
+  else assert.match(config,/^ss:\/\//)
  }
 })
 

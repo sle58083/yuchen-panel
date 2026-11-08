@@ -95,7 +95,7 @@ export function clientCanUseNode(client: any, node: any): boolean {
 }
 
 // 客户可分享的入站协议：SOCKS5 / dokodemo-door 属于内部链路，不生成客户订阅。
-const SHAREABLE_PROTOCOLS = ['vless', 'vmess', 'trojan']
+const SHAREABLE_PROTOCOLS = ['vless', 'vmess', 'trojan', 'shadowsocks']
 
 export function isClientShareNode(node: any): boolean {
   return SHAREABLE_PROTOCOLS.includes(String(node?.protocol || '').toLowerCase())
@@ -192,6 +192,15 @@ export function buildVlessLink(node: any, client: any, format: 'v2rayn' | 'shado
   return `vless://${client.uuid}@${host}:${port}?${q.toString()}#${label}`
 }
 
+function buildShadowsocksLink(node: any): string {
+  const credentials = utf8ToBase64(`${valueOr(node.ss_method, 'aes-256-gcm')}:${String(node.ss_password || '')}`)
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const host = uriHost(nodeHost(node))
+  const port = Number(node.port || 443)
+  const label = encodeURIComponent(safeName(node))
+  return `ss://${credentials}@${host}:${port}#${label}`
+}
+
 // buildVmessLink 生成 vmess:// 链接（v2rayN base64 JSON 格式），与后端订阅导出一致。
 export function buildVmessLink(node: any, client: any): string {
   const transport = transportOf(node)
@@ -256,6 +265,7 @@ export function buildNodeLink(node: any, client: any, format: 'v2rayn' | 'shadow
   const proto = String(node?.protocol || '').toLowerCase()
   if (proto === 'vmess') return buildVmessLink(node, client)
   if (proto === 'trojan') return buildTrojanLink(node, client)
+  if (proto === 'shadowsocks') return buildShadowsocksLink(node)
   return buildVlessLink(node, client, format)
 }
 
@@ -295,6 +305,13 @@ function clashProxy(node: any, client: any): string {
   lines.push(`  - name: ${yamlQuote(safeName(node))}`)
   lines.push(`    server: ${yamlQuote(nodeHost(node))}`)
   lines.push(`    port: ${Number(node.port || 443)}`)
+  if (proto === 'shadowsocks') {
+    lines.push(`    type: ss`)
+    lines.push(`    cipher: ${yamlQuote(node.ss_method || 'aes-256-gcm')}`)
+    lines.push(`    password: ${yamlQuote(node.ss_password || '')}`)
+    lines.push(`    udp: true`)
+    return lines.join('\n')
+  }
   if (proto === 'vmess') {
     lines.push(`    type: vmess`)
     lines.push(`    uuid: ${yamlQuote(client.uuid)}`)
@@ -389,6 +406,16 @@ function singBoxTransport(node: any): any | undefined {
 
 function singBoxOutbound(node: any, client: any): any {
   const proto = String(node?.protocol || '').toLowerCase()
+  if (proto === 'shadowsocks') {
+    return {
+      type: 'shadowsocks',
+      tag: safeName(node),
+      server: nodeHost(node),
+      server_port: Number(node.port || 443),
+      method: String(node.ss_method || 'aes-256-gcm'),
+      password: String(node.ss_password || ''),
+    }
+  }
   if (proto === 'vmess') {
     const outbound: any = {
       type: 'vmess',

@@ -181,6 +181,8 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 	n.RealitySpiderX = strings.TrimSpace(n.RealitySpiderX)
 	n.SocksUsername = strings.TrimSpace(n.SocksUsername)
 	n.SocksPassword = strings.TrimSpace(n.SocksPassword)
+	n.SSMethod = strings.ToLower(strings.TrimSpace(n.SSMethod))
+	n.SSPassword = strings.TrimSpace(n.SSPassword)
 	n.Remark = strings.TrimSpace(n.Remark)
 
 	if n.ServerID == "" {
@@ -215,9 +217,6 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		}
 	}
 	n.Protocol = strings.ToLower(strings.TrimSpace(n.Protocol))
-	if n.Protocol == "shadowsocks" {
-		return fmt.Errorf("面板已停用 Shadowsocks 节点，请改用 VLESS/Reality")
-	}
 	if n.Protocol == "vmess" && n.Security == "reality" {
 		n.Security = "none"
 	}
@@ -251,6 +250,24 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		}
 		if n.SocksPassword == "" {
 			n.SocksPassword = store.NewToken()
+		}
+	}
+	if n.Protocol == "shadowsocks" {
+		n.Transport = "tcp"
+		n.Security = "none"
+		n.Path = ""
+		n.SNI = ""
+		n.Fingerprint = ""
+		n.RealityDest = ""
+		n.RealityPrivateKey = ""
+		n.RealityPublicKey = ""
+		n.RealityShortID = ""
+		n.RealitySpiderX = ""
+		if n.SSMethod == "" {
+			n.SSMethod = "aes-256-gcm"
+		}
+		if n.SSPassword == "" {
+			n.SSPassword = store.NewToken()
 		}
 	}
 	if n.Security == "reality" {
@@ -303,13 +320,22 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		}
 	}
 	switch n.Protocol {
-	case "vless", "vmess", "trojan", "socks":
+	case "vless", "vmess", "trojan", "socks", "shadowsocks":
 	default:
 		return fmt.Errorf("暂不支持的协议：%s", n.Protocol)
 	}
 	if n.Protocol == "socks" {
 		if n.SocksUsername == "" || n.SocksPassword == "" {
 			return fmt.Errorf("SOCKS5 入站必须设置账号和密码，避免落地出口裸奔")
+		}
+		return nil
+	}
+	if n.Protocol == "shadowsocks" {
+		if !supportedShadowsocksMethods[n.SSMethod] {
+			return fmt.Errorf("暂不支持的 Shadowsocks 加密方式：%s", n.SSMethod)
+		}
+		if n.SSPassword == "" {
+			return fmt.Errorf("Shadowsocks 入站必须设置密码")
 		}
 		return nil
 	}
@@ -324,6 +350,14 @@ func (r *Router) normalizeNodeLocked(n *model.Node, currentID string) error {
 		return fmt.Errorf("暂不支持的安全方式：%s", n.Security)
 	}
 	return nil
+}
+
+var supportedShadowsocksMethods = map[string]bool{
+	"aes-128-gcm":             true,
+	"aes-256-gcm":             true,
+	"chacha20-ietf-poly1305":  true,
+	"2022-blake3-aes-128-gcm": true,
+	"2022-blake3-aes-256-gcm": true,
 }
 
 // Randomize SOCKS5 usernames so deployments do not share a fixed default.

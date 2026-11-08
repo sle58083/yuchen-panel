@@ -69,6 +69,11 @@ func buildSingBoxSubscription(nodes []model.Node, relays []model.RelayRoute, cli
 func singBoxNode(node model.Node, client model.Client) map[string]any {
 	protocol := strings.ToLower(strings.TrimSpace(node.Protocol))
 	out := map[string]any{"type": protocol, "tag": node.Name, "server": strings.Trim(nodeHost(node), "[]"), "server_port": node.Port}
+	if protocol == "shadowsocks" {
+		out["method"] = node.SSMethod
+		out["password"] = node.SSPassword
+		return out
+	}
 	if protocol == "trojan" {
 		out["password"] = xray.TrojanClientPassword(client)
 	} else {

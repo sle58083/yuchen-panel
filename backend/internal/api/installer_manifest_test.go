@@ -23,7 +23,7 @@ func TestInstallerRejectsMaliciousManifestBeforeExtraction(t *testing.T) {
 		{"shell", "version", "1.0.3-$(id)", "", false},
 		{"package-traversal", "package", "../bad.zip", "", false},
 		{"package-dotdot", "package", "bad..zip", "", false},
-		{"http", "download_url", "http://example.com/p.zip", "", false},
+		{"package-extension", "package", "panel.tar.gz", "", false},
 		{"root", "version", "1.0.3", "/", false},
 		{"multiple-root", "version", "1.0.3", "////", false},
 		{"relative-root", "version", "1.0.3", "relative", false},
@@ -49,14 +49,17 @@ func TestInstallerRejectsMaliciousManifestBeforeExtraction(t *testing.T) {
 source "$1"
 curl() {
   local output=''
+  local url=''
   while (( $# )); do
-    if [[ $1 == -o ]]; then output=$2; shift 2; else shift; fi
+    if [[ $1 == -o ]]; then output=$2; shift 2; else url=$1; shift; fi
   done
-  cp -- "$2_FIXTURE" "$output"
+  if [[ ${url} == https://api.github.com/repos/*/releases/tags/* ]]; then
+    printf '%s\n' '{"assets":[{"name":"panel.zip","url":"https://api.github.com/repos/sle58083/yuchen-panel/releases/assets/1"}]}' > "$output"
+  else
+    cp -- "$fixture_path" "$output"
+  fi
 }
 `
-			// Positional parameters are copied before mock curl receives its own argv.
-			program = strings.ReplaceAll(program, `"$2_FIXTURE"`, `"$fixture_path"`)
 			program += "fixture_path=$2\nfetch_manifest\n"
 			cmd := exec.Command("bash", "-c", program, "test", script, fixture)
 			cmd.Env = append(os.Environ(), "TMPDIR="+temp, "YC_INSTALL_ROOT="+root)
